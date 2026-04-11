@@ -67,18 +67,20 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear }) {
   }
 
   return (
-    <section className="canvas-shell panel">
+    <section className="canvas-shell panel canvas-shell-premium">
       <div className="canvas-topbar">
         <div>
-          <p className="eyebrow">Live Canvas</p>
-          <h2>实时画布</h2>
+          <p className="eyebrow">实时画布</p>
+          <h2>画布已经连上现场</h2>
           <p className="canvas-subtitle">
-            {isDrawer ? "你当前正在作画，笔触会实时同步给房间内其他玩家。" : "你当前不是画师，可以实时观看作画过程。"}
+            {isDrawer
+              ? "当前由你作画，你的每一笔都会即时同步到房间中。"
+              : "当前由其他玩家作画，你可以实时观看整个绘制过程。"}
           </p>
         </div>
 
         <div className="tool-row tool-row-rich">
-          {["#1e1b18", "#d9482f", "#0081a7", "#f4a300", "#2a9d6f"].map((color) => (
+          {["#1e1b18", "#d9482f", "#0081a7", "#f4a300", "#2a9d6f", "#6f5ef9"].map((color) => (
             <button
               key={color}
               className={`swatch ${tool.color === color ? "active" : ""}`}
