@@ -94,3 +94,19 @@ describe("session and rooms", () => {
     expect(guessed.body.room.round.winnerIds).toHaveLength(1);
   });
 });
+
+it("publishes only approved pack metadata while admins can inspect and remove submissions", async () => {
+  const user = await createSession("Reviewer");
+  const auth = { Authorization: `Bearer ${user.token}`, "x-admin-key": "test-admin-key" };
+  const created = await request(app).post("/api/packs").set(auth).send({ name: "审核流程测试", description: "测试投稿审核与公开列表流程", words: ["苹果", "香蕉", "月亮", "太阳"] });
+  const id = created.body.submittedPack.id;
+  const pending = await request(app).get("/api/admin/packs").set(auth);
+  expect(pending.body.packs.find((p) => p.id === id).words).toHaveLength(4);
+  await request(app).post(`/api/admin/packs/${id}/approve`).set(auth).expect(200);
+  const listed = await request(app).get("/api/bootstrap").set(auth);
+  expect(listed.body.packs.find((p) => p.id === id)).toMatchObject({ wordCount: 4, status: "approved" });
+  expect(listed.body.packs.every((p) => !Object.hasOwn(p, "words"))).toBe(true);
+  await request(app).delete(`/api/admin/packs/${id}`).set(auth).expect(204);
+  await request(app).post(`/api/admin/packs/${id}/approve`).set(auth).expect(404);
+  await request(app).delete(`/api/admin/packs/${id}`).set(auth).expect(404);
+});

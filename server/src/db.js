@@ -110,11 +110,11 @@ export function listWordPacks({ includePending = false } = {}) {
 }
 
 export function setWordPackStatus(id, status) {
-  statements.setPackStatus.run(status, id);
+  return statements.setPackStatus.run(status, id).changes;
 }
 
 export function deleteWordPack(id) {
-  statements.deletePack.run(id);
+  return statements.deletePack.run(id).changes;
 }
 
 export function resetPlayers() {

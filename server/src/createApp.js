@@ -25,6 +25,7 @@ import {
 import { normalizeText } from "./utils.js";
 
 seedWordPacksIfEmpty();
+const publicPacks = () => listWordPacks().map(({ words, ...pack }) => ({ ...pack, wordCount: words.length }));
 
 function getToken(req) {
   const auth = req.headers.authorization || "";
@@ -108,7 +109,7 @@ export function createApp() {
     return res.json({
       player: req.player,
       lobby: store.listLobby(),
-      packs: listWordPacks(),
+      packs: publicPacks(),
       room: room ? store.serializeRoomFor(req.player.id, room.code) : null,
       modeDescriptions: [
         {
@@ -126,7 +127,7 @@ export function createApp() {
   });
 
   app.get("/api/lobby", (_, res) => {
-    return res.json({ rooms: store.listLobby(), packs: listWordPacks() });
+    return res.json({ rooms: store.listLobby(), packs: publicPacks() });
   });
 
   app.post("/api/rooms", (req, res) => {
@@ -198,7 +199,7 @@ export function createApp() {
   });
 
   app.get("/api/packs", (_, res) => {
-    return res.json({ packs: listWordPacks() });
+    return res.json({ packs: publicPacks() });
   });
 
   app.post("/api/packs", (req, res) => {
@@ -222,7 +223,7 @@ export function createApp() {
         createdAt,
       })),
     );
-    return res.status(201).json({ submittedPack: { id: packId, status: "pending" }, packs: listWordPacks() });
+    return res.status(201).json({ submittedPack: { id: packId, status: "pending" }, packs: publicPacks() });
   });
 
   app.get("/api/admin/packs", requireAdmin, (_, res) => {
@@ -230,12 +231,12 @@ export function createApp() {
   });
 
   app.post("/api/admin/packs/:packId/approve", requireAdmin, (req, res) => {
-    setWordPackStatus(req.params.packId, "approved");
+    if (!setWordPackStatus(req.params.packId, "approved")) return res.status(404).json({ error: "词包不存在或已被处理。" });
     return res.json({ packs: listWordPacks({ includePending: true }) });
   });
 
   app.delete("/api/admin/packs/:packId", requireAdmin, (req, res) => {
-    deleteWordPack(req.params.packId);
+    if (!deleteWordPack(req.params.packId)) return res.status(404).json({ error: "词包不存在或已被处理。" });
     return res.status(204).end();
   });
 
