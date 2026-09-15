@@ -15,9 +15,11 @@ function drawStroke(context, stroke) {
   context.stroke();
 }
 
+const palette = ["#16110f", "#ff5b36", "#2f6bff", "#ffd84d", "#2db489", "#8b5cf6"];
+
 export function CanvasBoard({ room, isDrawer, onStroke, onClear }) {
   const canvasRef = useRef(null);
-  const [tool, setTool] = useState({ color: "#1e1b18", width: 5 });
+  const [tool, setTool] = useState({ color: "#16110f", width: 5 });
   const currentStroke = useRef(null);
 
   useEffect(() => {
@@ -67,29 +69,39 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear }) {
   }
 
   return (
-    <section className="canvas-shell panel canvas-shell-premium">
-      <div className="canvas-topbar">
-        <div>
-          <p className="eyebrow">实时画布</p>
-          <h2>画布已经连上现场</h2>
-          <p className="canvas-subtitle">
-            {isDrawer
-              ? "当前由你作画，你的每一笔都会即时同步到房间中。"
-              : "当前由其他玩家作画，你可以实时观看整个绘制过程。"}
-          </p>
+    <section className="surface-panel canvas-shell">
+      <div className="canvas-frame">
+        <div className="canvas-header">
+          <div>
+            <p className="section-kicker">Canvas Feed</p>
+            <h2>画布就是这一局的中心舞台</h2>
+            <p className="canvas-subtitle">
+              {isDrawer ? "你的每一笔都会立刻同步到房间内所有玩家。" : "你正在实时观看画面推进，等待下一次灵光一现。"}
+            </p>
+          </div>
+
+          <div className="canvas-utilities">
+            <span className={`canvas-badge ${room?.round?.status === "active" ? "is-live" : ""}`}>
+              {room?.round?.status === "active" ? "直播中" : "等待开局"}
+            </span>
+            <span className="canvas-badge">{isDrawer ? "你正在作画" : "观察画布"}</span>
+          </div>
         </div>
 
-        <div className="tool-row tool-row-rich">
-          {["#1e1b18", "#d9482f", "#0081a7", "#f4a300", "#2a9d6f", "#6f5ef9"].map((color) => (
-            <button
-              key={color}
-              className={`swatch ${tool.color === color ? "active" : ""}`}
-              style={{ "--swatch": color }}
-              onClick={() => setTool((prev) => ({ ...prev, color }))}
-              aria-label={`切换颜色 ${color}`}
-              type="button"
-            />
-          ))}
+        <div className="tool-deck">
+          <div className="swatch-row">
+            {palette.map((color) => (
+              <button
+                key={color}
+                className={`swatch ${tool.color === color ? "active" : ""}`}
+                style={{ "--swatch": color }}
+                onClick={() => setTool((prev) => ({ ...prev, color }))}
+                aria-label={`切换颜色 ${color}`}
+                type="button"
+              />
+            ))}
+          </div>
+
           <div className="brush-meter">
             <span>线宽</span>
             <input
@@ -101,26 +113,26 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear }) {
             />
             <strong>{tool.width}px</strong>
           </div>
+
           <button className="ghost-button" onClick={onClear} disabled={!isDrawer} type="button">
             清空画布
           </button>
         </div>
-      </div>
 
-      <div className="canvas-stage">
-        <div className="canvas-stage-badge">
-          {room?.round?.status === "active" ? "实时同步中" : "等待回合开始"}
+          <div className="canvas-stage interactive-tilt">
+            <div className="canvas-orbit canvas-orbit-a" />
+            <div className="canvas-orbit canvas-orbit-b" />
+          <canvas
+            ref={canvasRef}
+            className={`board ${isDrawer ? "board-drawable" : ""}`}
+            width="960"
+            height="620"
+            onPointerDown={pointerDown}
+            onPointerMove={pointerMove}
+            onPointerUp={pointerUp}
+            onPointerLeave={pointerUp}
+          />
         </div>
-        <canvas
-          ref={canvasRef}
-          className={`board ${isDrawer ? "board-drawable" : ""}`}
-          width="960"
-          height="620"
-          onPointerDown={pointerDown}
-          onPointerMove={pointerMove}
-          onPointerUp={pointerUp}
-          onPointerLeave={pointerUp}
-        />
       </div>
     </section>
   );

@@ -3,7 +3,7 @@ import { api } from "./api.js";
 import { CanvasBoard } from "./components/CanvasBoard.jsx";
 
 const defaultRoomForm = {
-  name: "月光画室",
+  name: "午夜速写局",
   mode: "library",
   packIds: [],
 };
@@ -18,17 +18,43 @@ const statusTextMap = {
   waiting: "等待开局",
   "collecting-word": "等待出题",
   active: "正在作画",
-  finished: "本轮结束",
+  finished: "本轮结算",
 };
 
 const modeTextMap = {
   library: "公共词库局",
-  "host-judged": "灵感裁判局",
+  "host-judged": "主持裁定局",
 };
+
+function TypewriterText({ text, className = "", speed = 55 }) {
+  const [visibleText, setVisibleText] = useState("");
+
+  useEffect(() => {
+    setVisibleText("");
+    let index = 0;
+    const chars = Array.from(text);
+    const timer = window.setInterval(() => {
+      index += 1;
+      setVisibleText(chars.slice(0, index).join(""));
+      if (index >= chars.length) {
+        window.clearInterval(timer);
+      }
+    }, speed);
+
+    return () => window.clearInterval(timer);
+  }, [text, speed]);
+
+  return (
+    <span className={`typewriter ${className}`.trim()} aria-label={text}>
+      {visibleText}
+    </span>
+  );
+}
 
 function getMemberTags(member, room, me) {
   const tags = [];
   if (member.id === me?.id) tags.push("我");
+  if (member.id === room?.hostId) tags.push("房主");
   if (member.id === room?.round?.drawerId) tags.push("画师");
   if (member.id === room?.round?.prompterId) tags.push("出题");
   if (room?.round?.viewerIsGuesser && member.id === me?.id) tags.push("猜词");
@@ -40,10 +66,10 @@ function Feedback({ error, loading, room }) {
     return <div className="feedback-banner feedback-error">{error}</div>;
   }
   if (loading) {
-    return <div className="feedback-banner feedback-info">正在同步房间状态…</div>;
+    return <div className="feedback-banner feedback-info">正在同步房间与画布状态...</div>;
   }
   if (room?.round?.status === "finished") {
-    return <div className="feedback-banner feedback-success">本轮已结算，房主可以随时开启下一回合。</div>;
+    return <div className="feedback-banner feedback-success">本轮已结算，房主可以继续发起下一轮。</div>;
   }
   return null;
 }
@@ -52,53 +78,63 @@ function ModeSummary({ mode }) {
   if (mode === "host-judged") {
     return (
       <>
-        <h4>灵感裁判局</h4>
-        <p>一人给词，一人作画，其余玩家猜测，由给词者决定答案是否命中。</p>
+        <p className="mini-kicker">主持裁定局</p>
+        <h3>更适合朋友聚会和自由发挥</h3>
+        <p>一人给词，一人作画，其余玩家猜测，是否命中由出题者裁定，适合更灵活的规则和现场互动。</p>
       </>
     );
   }
 
   return (
     <>
-      <h4>公共词库局</h4>
-      <p>从已审核词库中随机抽题，系统自动判断标准答案，节奏更快更清晰。</p>
+      <p className="mini-kicker">公共词库局</p>
+      <h3>节奏清晰，适合快速开局</h3>
+      <p>从已审核词包中随机抽题，系统自动管理标准答案，流程更轻，适合稳定的多人房间。</p>
     </>
   );
 }
 
 function LoginHero() {
   return (
-    <section className="login-intro panel page-enter">
-      <div className="intro-mark">InkMuse</div>
-      <h1>把你画我猜做成真正有氛围的实时房间。</h1>
-      <p className="intro-text">创建临时身份，进入大厅，快速切换到作画、猜词与裁定的完整现场。</p>
+    <section className="hero-panel surface-panel page-enter">
+      <div className="hero-gridline" />
+      <p className="brand-mark">InkMuse / Live Drawing Room</p>
+      <div className="hero-copy">
+        <p className="section-kicker">协作绘画 · 实时猜词 · 房间制</p>
+        <h1>
+          <TypewriterText text="把“你画我猜”做成一场像现场演出一样的实时舞台。" />
+        </h1>
+        <p className="hero-text">
+          这一版不再是普通卡片堆叠，而是把大厅、开局、画布和裁定状态都做成同一套编排感更强的交互系统。
+        </p>
+      </div>
 
-      <div className="feature-columns">
-        <article className="feature-block">
-          <span className="feature-kicker">房间流程</span>
-          <h3>从创建到开局都保持清晰</h3>
-          <p>大厅、房间、作画阶段和裁定状态都能持续可见，不会被琐碎操作打断。</p>
+      <div className="hero-metrics">
+        <article className="metric-card">
+          <span>房间模式</span>
+          <strong>词库局 / 裁定局</strong>
         </article>
-        <article className="feature-block">
-          <span className="feature-kicker">实时对局</span>
-          <h3>画布永远是主角</h3>
-          <p>作画板保持中心位置，猜词、分数、提示词和玩家状态围绕它自然展开。</p>
+        <article className="metric-card">
+          <span>同步方式</span>
+          <strong>HTTP + WebSocket</strong>
+        </article>
+        <article className="metric-card">
+          <span>核心舞台</span>
+          <strong>实时画布</strong>
         </article>
       </div>
 
-      <div className="intro-ribbon">
-        <div className="ribbon-stat">
-          <span>玩法模式</span>
-          <strong>词库局 / 裁判局</strong>
-        </div>
-        <div className="ribbon-stat">
-          <span>实时同步</span>
-          <strong>画布与房间状态</strong>
-        </div>
-        <div className="ribbon-stat">
-          <span>词包投稿</span>
-          <strong>支持审核后发布</strong>
-        </div>
+      <div className="hero-notes">
+        <article className="note-card">
+          <p className="mini-kicker">01</p>
+          <h3>大厅像策展墙</h3>
+          <p>房间列表不再只是表格，它应该像一排正在上演的展间入口。</p>
+        </article>
+        <article className="note-card">
+          <p className="mini-kicker">02</p>
+          <h3>画布永远是主角</h3>
+          <p>所有信息围绕画布展开，而不是把画布挤成页面里的一个普通组件。</p>
+        </article>
       </div>
     </section>
   );
@@ -106,23 +142,20 @@ function LoginHero() {
 
 function RoomTile({ item, onJoin }) {
   return (
-    <article className="room-tile room-tile-animated" key={item.code}>
-      <div className={`room-accent room-accent-${item.status}`} />
-      <div className="room-tile-head">
+    <article className="room-card editorial-card interactive-lift">
+      <div className={`room-card-rail room-card-rail-${item.status}`} />
+      <div className="room-card-head">
         <div>
-          <span className="room-code">{item.code}</span>
+          <p className="room-code">{item.code}</p>
           <h3>{item.name}</h3>
         </div>
-        <span className="room-state">{statusTextMap[item.status] || item.status}</span>
+        <span className="status-pill">{statusTextMap[item.status] || item.status}</span>
       </div>
-      <div className="room-tile-body">
-        <p>{modeTextMap[item.mode] || item.mode}</p>
-      </div>
-      <div className="room-tile-meta">
+      <p className="room-card-copy">{modeTextMap[item.mode] || item.mode}</p>
+      <div className="room-card-meta">
         <span>{item.playerCount} 人在线</span>
-        <button className="primary-button enter-button" onClick={onJoin}>
+        <button className="primary-button" onClick={onJoin} type="button">
           进入房间
-          <span className="enter-arrow">→</span>
         </button>
       </div>
     </article>
@@ -130,37 +163,33 @@ function RoomTile({ item, onJoin }) {
 }
 
 function StatusPanel({ room, roleLabel, isHost, loading, onStartRound }) {
+  const facts = [
+    { label: "当前状态", value: statusTextMap[room.round.status] || room.round.status },
+    { label: "画师", value: room.round.drawerId || "待定" },
+    { label: "出题者", value: room.round.prompterId || "系统词库" },
+    { label: "线索", value: room.round.maskedWord || "本轮开始后显示" },
+  ];
+
   return (
-    <section className="panel section-card room-side-panel">
-      <div className="round-banner">
+    <section className="surface-panel status-panel">
+      <div className="status-panel-head">
         <div>
-          <p className="eyebrow">回合桌面</p>
+          <p className="section-kicker">Round Console</p>
           <h2>{roleLabel}</h2>
         </div>
         {isHost ? (
-          <button className="primary-button primary-button-glow" onClick={onStartRound} disabled={loading}>
-            开始回合
+          <button className="primary-button accent-button" onClick={onStartRound} disabled={loading} type="button">
+            开始下一轮
           </button>
         ) : null}
       </div>
-
-      <div className="round-summary">
-        <div className="summary-item">
-          <span>状态</span>
-          <strong>{statusTextMap[room.round.status] || room.round.status}</strong>
-        </div>
-        <div className="summary-item">
-          <span>画师</span>
-          <strong>{room.round.drawerId || "待定"}</strong>
-        </div>
-        <div className="summary-item">
-          <span>给词者</span>
-          <strong>{room.round.prompterId || "系统词库"}</strong>
-        </div>
-        <div className="summary-item">
-          <span>提示</span>
-          <strong>{room.round.maskedWord || "隐藏中"}</strong>
-        </div>
+      <div className="status-grid">
+        {facts.map((fact) => (
+          <article className="status-box" key={fact.label}>
+            <span>{fact.label}</span>
+            <strong>{fact.value}</strong>
+          </article>
+        ))}
       </div>
     </section>
   );
@@ -172,28 +201,95 @@ function RoundWrapup({ room }) {
   const answerText = room?.round?.word || room?.round?.maskedWord || "本轮答案已揭晓";
 
   return (
-    <section className="round-wrapup panel page-enter">
-      <div className="round-wrapup-copy">
-        <p className="eyebrow">本轮结算</p>
-        <h2>这一轮已经收尾</h2>
-        <p className="helper-text">正确答案：{answerText}</p>
+    <section className="surface-panel wrapup-panel page-enter">
+      <div className="wrapup-copy">
+        <p className="section-kicker">Round Closed</p>
+        <h2>这一轮已经收束，结果留在台前。</h2>
+        <p>正确答案：{answerText}</p>
       </div>
-
-      <div className="wrapup-strip">
-        <article className="wrapup-card">
-          <span>本轮状态</span>
-          <strong>结算完成</strong>
-        </article>
-        <article className="wrapup-card">
+      <div className="wrapup-stats">
+        <article className="wrapup-box">
           <span>命中玩家</span>
           <strong>{winners.length ? winners.map((member) => member.id).join("、") : "本轮无人猜中"}</strong>
         </article>
-        <article className="wrapup-card">
+        <article className="wrapup-box">
           <span>下一步</span>
-          <strong>房主可直接开启下一回合</strong>
+          <strong>房主可以直接继续下一轮</strong>
         </article>
       </div>
     </section>
+  );
+}
+
+function ModeGuide({ modeDescriptions }) {
+  return (
+    <section className="surface-panel guide-panel">
+      <div className="section-head">
+        <div>
+          <p className="section-kicker">玩法说明</p>
+          <h2>不同局制，不同节奏</h2>
+        </div>
+      </div>
+      <div className="guide-list">
+        {modeDescriptions.map((mode) => (
+          <article className="guide-card interactive-lift" key={mode.id}>
+            <p className="mini-kicker">{mode.id}</p>
+            <h3>{mode.title}</h3>
+            <p>{mode.description}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ActivityPanel({ room }) {
+  return (
+    <div className="room-side-stack">
+      <section className="surface-panel side-panel">
+        <div className="subsection-head">
+          <h3>房间玩家</h3>
+          <span>{room.players.length} 在线</span>
+        </div>
+        <div className="player-list">
+          {room.players.map((member) => {
+            const tags = getMemberTags(member, room, room?.me);
+
+            return (
+              <article className={`player-card interactive-lift ${member.id === room?.me?.id ? "player-card-self" : ""}`} key={member.id}>
+                <div className="player-card-copy">
+                  <strong>{member.id}</strong>
+                  {tags.length ? (
+                    <div className="player-tags">
+                      {tags.map((tag) => (
+                        <span className="player-tag" key={`${member.id}-${tag}`}>
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <span className="score-chip">{member.score} pts</span>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="surface-panel side-panel">
+        <div className="subsection-head">
+          <h3>房间动态</h3>
+          <span>实时</span>
+        </div>
+        <div className="chat-log">
+          {room.messages.map((message) => (
+            <div className={`chat-line ${message.type}`} key={message.id}>
+              {message.text}
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -364,10 +460,10 @@ export default function App() {
   }
 
   const roleLabel = useMemo(() => {
-    if (!room?.round) return "当前在大厅等待";
+    if (!room?.round) return "你现在在大厅等待新一轮";
     if (isDrawer) return "这一轮由你作画";
-    if (isPrompter) return "这一轮由你裁定";
-    if (room.round.viewerIsGuesser) return "这一轮由你猜词";
+    if (isPrompter) return "这一轮由你出题与裁定";
+    if (room.round.viewerIsGuesser) return "这一轮由你负责猜词";
     return "当前正在观战";
   }, [room, isDrawer, isPrompter]);
 
@@ -382,13 +478,13 @@ export default function App() {
   if (!session) {
     return (
       <div className="app-shell">
-        <section className="login-layout">
+        <main className="login-layout">
           <LoginHero />
 
-          <form className="login-panel panel page-enter delay-1" onSubmit={handleLogin}>
+          <form className="surface-panel login-panel page-enter delay-1" onSubmit={handleLogin}>
             <div className="section-head">
               <div>
-                <p className="eyebrow">临时身份</p>
+                <p className="section-kicker">临时身份</p>
                 <h2>进入大厅</h2>
               </div>
             </div>
@@ -396,12 +492,12 @@ export default function App() {
               玩家 ID
               <input value={preferredId} onChange={(event) => setPreferredId(event.target.value)} placeholder="例如 AuroraFox" />
             </label>
-            <button className="primary-button primary-button-glow" type="submit" disabled={loading}>
-              {loading ? "正在连接…" : "创建临时身份"}
+            <button className="primary-button accent-button" type="submit" disabled={loading}>
+              {loading ? "正在连接..." : "创建临时身份"}
             </button>
             <Feedback error={error} loading={loading} room={null} />
           </form>
-        </section>
+        </main>
       </div>
     );
   }
@@ -409,15 +505,15 @@ export default function App() {
   return (
     <div className="app-shell">
       {!room && (
-        <main className="app-layout">
-          <header className="topbar panel page-enter">
-            <div className="topbar-brand">
-              <p className="eyebrow">InkMuse 大厅</p>
-              <h1>今夜开局</h1>
+        <main className="lobby-shell">
+          <header className="surface-panel lobby-topbar page-enter">
+            <div>
+              <p className="section-kicker">InkMuse Lobby</p>
+              <h1>今晚开哪一局？</h1>
             </div>
             <div className="topbar-actions">
-              <div className="identity-badge">当前身份 {player?.id}</div>
-              <button className="ghost-button" onClick={handleLogout}>
+              <div className="identity-pill">当前身份 {player?.id}</div>
+              <button className="ghost-button" onClick={handleLogout} type="button">
                 退出登录
               </button>
             </div>
@@ -425,15 +521,15 @@ export default function App() {
 
           <Feedback error={error} loading={loading} room={room} />
 
-          <section className="workspace-grid page-enter">
-            <aside className="left-column">
-              <section className="panel section-card section-card-animated">
+          <section className="lobby-grid page-enter">
+            <aside className="lobby-sidebar">
+              <section className="surface-panel compose-panel">
                 <div className="section-head">
                   <div>
-                    <p className="eyebrow">创建房间</p>
-                    <h2>开一局新的房间</h2>
+                    <p className="section-kicker">创建房间</p>
+                    <h2>从这里发起一场新的对局</h2>
                   </div>
-                  <button className="ghost-button" onClick={() => setPackModalOpen(true)}>
+                  <button className="ghost-button" onClick={() => setPackModalOpen(true)} type="button">
                     投稿词包
                   </button>
                 </div>
@@ -443,14 +539,8 @@ export default function App() {
                     房间名称
                     <input value={roomForm.name} onChange={(event) => setRoomForm((prev) => ({ ...prev, name: event.target.value }))} />
                   </label>
+
                   <div className="mode-switch">
-                    <button
-                      type="button"
-                      className={`mode-switch-button ${roomForm.mode === "host-judged" ? "active" : ""}`}
-                      onClick={() => setRoomForm((prev) => ({ ...prev, mode: "host-judged", packIds: [] }))}
-                    >
-                      灵感裁判局
-                    </button>
                     <button
                       type="button"
                       className={`mode-switch-button ${roomForm.mode === "library" ? "active" : ""}`}
@@ -458,78 +548,71 @@ export default function App() {
                     >
                       公共词库局
                     </button>
+                    <button
+                      type="button"
+                      className={`mode-switch-button ${roomForm.mode === "host-judged" ? "active" : ""}`}
+                      onClick={() => setRoomForm((prev) => ({ ...prev, mode: "host-judged", packIds: [] }))}
+                    >
+                      主持裁定局
+                    </button>
                   </div>
-                  <div className="info-block mode-summary-block">
+
+                  <div className="mode-summary-card">
                     <ModeSummary mode={roomForm.mode} />
                   </div>
-                  {roomForm.mode === "library" && (
-                    <div className="selector-card selector-card-animated">
+
+                  {roomForm.mode === "library" ? (
+                    <div className="selector-card">
                       <div>
-                        <p className="selector-title">已选词包</p>
-                        <p className="selector-value">
-                          {selectedPacks.length ? selectedPacks.map((pack) => pack.name).join(", ") : "暂未选择词包"}
-                        </p>
+                        <p className="mini-kicker">已选词包</p>
+                        <strong>{selectedPacks.length ? selectedPacks.map((pack) => pack.name).join("、") : "暂未选择词包"}</strong>
                       </div>
                       <button className="ghost-button" type="button" onClick={() => setPackPickerOpen(true)}>
                         选择词包
                       </button>
                     </div>
-                  )}
-                  <button className="primary-button primary-button-glow" onClick={() => mutate(() => api.createRoom(session.token, roomForm))} disabled={loading}>
+                  ) : null}
+
+                  <button className="primary-button accent-button" onClick={() => mutate(() => api.createRoom(session.token, roomForm))} disabled={loading} type="button">
                     创建并进入
                   </button>
                 </div>
               </section>
 
-              <section className="panel section-card section-card-animated delay-1">
-                <div className="section-head">
-                  <div>
-                    <p className="eyebrow">模式说明</p>
-                    <h2>选择合适节奏</h2>
-                  </div>
-                </div>
-                <div className="guide-list">
-                  {modeDescriptions.map((mode) => (
-                    <article className="guide-item guide-item-hover" key={mode.id}>
-                      <h3>{mode.title}</h3>
-                      <p>{mode.description}</p>
-                    </article>
-                  ))}
-                </div>
-              </section>
+              <ModeGuide modeDescriptions={modeDescriptions} />
             </aside>
 
-            <section className="main-column">
-              <section className="panel lobby-hero-card section-card section-card-animated">
-                <div className="lobby-hero-copy">
-                  <p className="eyebrow">实时房间区</p>
-                  <h2>加入正在进行的房间，或亲自开启一局。</h2>
+            <section className="lobby-main">
+              <section className="surface-panel billboard-panel">
+                <div className="billboard-copy">
+                  <p className="section-kicker">Live Rooms</p>
+                  <h2>大厅像一面演出排期墙，每个房间都应该看起来随时可以进入。</h2>
                 </div>
-                <div className="lobby-overview">
-                  <article className="overview-card float-card">
+                <div className="billboard-stats">
+                  <article className="billboard-stat interactive-lift">
                     <span>活跃房间</span>
                     <strong>{lobby.length}</strong>
                   </article>
-                  <article className="overview-card float-card">
-                    <span>公开词包</span>
+                  <article className="billboard-stat interactive-lift">
+                    <span>可用词包</span>
                     <strong>{packs.length}</strong>
                   </article>
-                  <article className="overview-card float-card">
+                  <article className="billboard-stat interactive-lift">
                     <span>当前身份</span>
                     <strong>{player?.id}</strong>
                   </article>
                 </div>
               </section>
 
-              <section className="panel section-card section-card-animated delay-2">
-                <div className="section-head lobby-head">
+              <section className="surface-panel rooms-panel">
+                <div className="section-head rooms-head">
                   <div>
-                    <p className="eyebrow">房间列表</p>
-                    <h2>大厅中的开放房间</h2>
+                    <p className="section-kicker">房间列表</p>
+                    <h2>正在开放的实时房间</h2>
                   </div>
                   <div className="join-inline">
                     <input value={joinCode} onChange={(event) => setJoinCode(event.target.value.toUpperCase())} placeholder="输入房间码" />
-                    <button className="ghost-button" onClick={() => mutate(() => api.joinRoom(session.token, joinCode))}>
+                    <button className="ghost-button" onClick={() => mutate(() => api.joinRoom(session.token, joinCode))} type="button">
                       加入
                     </button>
                   </div>
@@ -539,7 +622,7 @@ export default function App() {
                   {lobby.map((item) => (
                     <RoomTile key={item.code} item={item} onJoin={() => mutate(() => api.joinRoom(session.token, item.code))} />
                   ))}
-                  {!lobby.length && <p className="helper-text">大厅还没有活跃房间。现在就开一局，画下今晚的第一笔。</p>}
+                  {!lobby.length ? <p className="empty-copy">大厅里还没有活跃房间，现在就开一局，留下今晚第一笔。</p> : null}
                 </div>
               </section>
             </section>
@@ -548,59 +631,60 @@ export default function App() {
       )}
 
       {room && (
-        <main className="room-page-shell">
-          <section className="room-focus page-enter">
-            <header className="room-focus-topbar panel room-stage-header">
-              <div>
-                <p className="eyebrow">房间舞台</p>
-                <h1>{room.name}</h1>
-                <p className="helper-text">
-                  {modeTextMap[room.mode]} · {roleLabel}
-                </p>
-              </div>
-              <div className="room-header-actions">
-                <div className="stat-chip">房间码 {room.code}</div>
-                <div className="stat-chip">在线 {room.players.length} 人</div>
-                <div className="stat-chip">{statusTextMap[room.round.status] || room.round.status}</div>
-                <button
-                  className="ghost-button"
-                  onClick={() =>
-                    mutate(() => api.leaveRoom(session.token), {
-                      resetPrompt: true,
-                      resetGuess: true,
-                    })
-                  }
-                >
-                  返回大厅
-                </button>
-              </div>
-            </header>
+        <main className="stage-shell">
+          <header className="surface-panel stage-topbar page-enter">
+            <div>
+              <p className="section-kicker">Room Stage</p>
+              <h1>{room.name}</h1>
+              <p className="topbar-subcopy">
+                {modeTextMap[room.mode]} · {roleLabel}
+              </p>
+            </div>
+            <div className="topbar-actions">
+              <span className="identity-pill">房间码 {room.code}</span>
+              <span className="identity-pill">在线 {room.players.length} 人</span>
+              <span className="identity-pill">{statusTextMap[room.round.status] || room.round.status}</span>
+              <button
+                className="ghost-button"
+                onClick={() =>
+                  mutate(() => api.leaveRoom(session.token), {
+                    resetPrompt: true,
+                    resetGuess: true,
+                  })
+                }
+                type="button"
+              >
+                返回大厅
+              </button>
+            </div>
+          </header>
 
-            <div className="room-entrance-banner page-enter">
-              <span className="entrance-dot" />
-              房间已连接，实时同步开启
+          <div className="stage-banner page-enter">
+            <span className="live-dot" />
+            房间连接稳定，画布实时同步已开启
+          </div>
+
+          <Feedback error={error} loading={loading} room={room} />
+
+          <section className="stage-grid">
+            <div className="stage-main">
+              {room.round?.status === "finished" ? <RoundWrapup room={room} /> : null}
+              <StatusPanel room={room} roleLabel={roleLabel} isHost={isHost} loading={loading} onStartRound={() => mutate(() => api.startRound(session.token, room.code))} />
+              <CanvasBoard room={room} isDrawer={isDrawer} onStroke={sendStroke} onClear={clearCanvas} />
             </div>
 
-            <Feedback error={error} loading={loading} room={room} />
-
-            <div className="room-focus-grid">
-              <div className="room-main-stage">
-                {room.round?.status === "finished" ? <RoundWrapup room={room} /> : null}
-                <StatusPanel room={room} roleLabel={roleLabel} isHost={isHost} loading={loading} onStartRound={() => mutate(() => api.startRound(session.token, room.code))} />
-                <CanvasBoard room={room} isDrawer={isDrawer} onStroke={sendStroke} onClear={clearCanvas} />
-              </div>
-
-              <section className="panel section-card room-side-panel">
-                {room.round.word && (
-                  <div className="info-block info-spotlight">
-                    <h4>你可见的词</h4>
-                    <p>{room.round.word}</p>
+            <aside className="stage-side">
+              <section className="surface-panel side-panel control-panel">
+                {room.round.word ? (
+                  <div className="spotlight-card">
+                    <p className="mini-kicker">你可见的词</p>
+                    <h3>{room.round.word}</h3>
                   </div>
-                )}
+                ) : null}
 
-                {isPrompter && room.round.status === "collecting-word" && (
+                {isPrompter && room.round.status === "collecting-word" ? (
                   <form
-                    className="stack form-block"
+                    className="stack"
                     onSubmit={(event) => {
                       event.preventDefault();
                       mutate(() => api.submitPrompt(session.token, room.code, promptWord), { resetPrompt: true });
@@ -608,17 +692,17 @@ export default function App() {
                   >
                     <label>
                       输入给词
-                      <input value={promptWord} onChange={(event) => setPromptWord(event.target.value)} />
+                      <input value={promptWord} onChange={(event) => setPromptWord(event.target.value)} placeholder="例如：月球车" />
                     </label>
-                    <button className="primary-button primary-button-glow" type="submit">
+                    <button className="primary-button accent-button" type="submit">
                       发送给画师
                     </button>
                   </form>
-                )}
+                ) : null}
 
-                {room.round.viewerIsGuesser && (
+                {room.round.viewerIsGuesser ? (
                   <form
-                    className="stack form-block"
+                    className="stack"
                     onSubmit={(event) => {
                       event.preventDefault();
                       mutate(() => api.submitGuess(session.token, room.code, guess), { resetGuess: true });
@@ -626,95 +710,55 @@ export default function App() {
                   >
                     <label>
                       输入你的猜测
-                      <input value={guess} onChange={(event) => setGuess(event.target.value)} />
+                      <input value={guess} onChange={(event) => setGuess(event.target.value)} placeholder="想到什么就直接猜" />
                     </label>
-                    <button className="primary-button primary-button-glow" type="submit">
+                    <button className="primary-button accent-button" type="submit">
                       提交答案
                     </button>
                   </form>
-                )}
+                ) : null}
 
-                {isPrompter && room.round.pendingGuess && (
-                  <div className="info-block judge-card judge-card-live">
-                    <h4>待裁定答案</h4>
-                    <p>
+                {isPrompter && room.round.pendingGuess ? (
+                  <div className="judge-panel">
+                    <p className="mini-kicker">待裁定答案</p>
+                    <h3>
                       {room.round.pendingGuess.guesserId}: {room.round.pendingGuess.text}
-                    </p>
+                    </h3>
                     <div className="inline-actions">
                       <button
-                        className="primary-button primary-button-glow"
+                        className="primary-button accent-button"
                         onClick={() => mutate(() => api.judgeGuess(session.token, room.code, room.round.pendingGuess.guesserId, true))}
+                        type="button"
                       >
                         判定正确
                       </button>
                       <button
                         className="ghost-button"
                         onClick={() => mutate(() => api.judgeGuess(session.token, room.code, room.round.pendingGuess.guesserId, false))}
+                        type="button"
                       >
                         继续游戏
                       </button>
                     </div>
                   </div>
-                )}
-
-                <div className="subsection">
-                  <div className="subsection-head">
-                    <h3>房间玩家</h3>
-                    <span>{room.players.length} 在线</span>
-                  </div>
-                  <div className="player-list">
-                    {room.players.map((member) => {
-                      const tags = getMemberTags(member, room, me);
-
-                      return (
-                        <article className={`player-row ${member.id === me?.id ? "player-row-self" : ""}`} key={member.id}>
-                          <div className="player-meta">
-                            <span className="player-name">{member.id}</span>
-                            {tags.length ? (
-                              <div className="player-tags">
-                                {tags.map((tag) => (
-                                  <span className="player-tag" key={`${member.id}-${tag}`}>
-                                    {tag}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                          <strong className="player-score">{member.score} pts</strong>
-                        </article>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="subsection">
-                  <div className="subsection-head">
-                    <h3>房间动态</h3>
-                    <span>实时</span>
-                  </div>
-                  <div className="chat-log">
-                    {room.messages.map((message) => (
-                      <div className={`chat-line ${message.type} ${message.type === "guess" ? "chat-line-celebrate" : ""}`} key={message.id}>
-                        {message.text}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                ) : null}
               </section>
-            </div>
+
+              <ActivityPanel room={room} />
+            </aside>
           </section>
         </main>
       )}
 
-      {packPickerOpen && (
+      {packPickerOpen ? (
         <div className="modal-backdrop" onClick={() => setPackPickerOpen(false)}>
-          <div className="modal-card page-enter" onClick={(event) => event.stopPropagation()}>
+          <div className="surface-panel modal-card page-enter" onClick={(event) => event.stopPropagation()}>
             <div className="section-head">
               <div>
-                <p className="eyebrow">词包列表</p>
+                <p className="section-kicker">词包列表</p>
                 <h2>选择已审核词包</h2>
               </div>
-              <button className="ghost-button" onClick={() => setPackPickerOpen(false)}>
+              <button className="ghost-button" onClick={() => setPackPickerOpen(false)} type="button">
                 关闭
               </button>
             </div>
@@ -736,17 +780,17 @@ export default function App() {
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
-      {packModalOpen && (
+      {packModalOpen ? (
         <div className="modal-backdrop" onClick={() => setPackModalOpen(false)}>
-          <div className="modal-card page-enter" onClick={(event) => event.stopPropagation()}>
+          <div className="surface-panel modal-card page-enter" onClick={(event) => event.stopPropagation()}>
             <div className="section-head">
               <div>
-                <p className="eyebrow">提交词包</p>
-                <h2>投稿新的词包内容</h2>
+                <p className="section-kicker">投稿词包</p>
+                <h2>提交新的词包内容</h2>
               </div>
-              <button className="ghost-button" onClick={() => setPackModalOpen(false)}>
+              <button className="ghost-button" onClick={() => setPackModalOpen(false)} type="button">
                 关闭
               </button>
             </div>
@@ -768,25 +812,29 @@ export default function App() {
                 />
               </label>
               <button
-                className="primary-button primary-button-glow"
+                className="primary-button accent-button"
                 onClick={() =>
                   mutate(
                     () =>
                       api.createPack(session.token, {
                         name: packForm.name,
                         description: packForm.description,
-                        words: packForm.words.split("\n").map((item) => item.trim()).filter(Boolean),
+                        words: packForm.words
+                          .split("\n")
+                          .map((item) => item.trim())
+                          .filter(Boolean),
                       }),
                     { closePackModal: true },
                   )
                 }
+                type="button"
               >
                 提交审核
               </button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
