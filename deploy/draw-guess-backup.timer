@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily InkMuse word pack backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=900
+Persistent=true
+Unit=draw-guess-backup.service
+
+[Install]
+WantedBy=timers.target

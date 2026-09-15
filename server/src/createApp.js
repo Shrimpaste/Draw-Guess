@@ -62,6 +62,7 @@ export function createApp() {
   const notifyRoom = (roomCode) => store.changed(roomCode);
 
   app.set("store", store);
+  app.set("trust proxy", config.trustProxy);
   app.use((req, res, next) => {
     const json = res.json.bind(res);
     res.json = (body) => json({ ...body, revision: store.revision });

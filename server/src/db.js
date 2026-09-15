@@ -1,17 +1,15 @@
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import Database from "better-sqlite3";
 import { config } from "./config.js";
 
+if (config.databasePath !== ":memory:") mkdirSync(dirname(config.databasePath), { recursive: true });
 const db = new Database(config.databasePath);
 db.pragma("journal_mode = WAL");
+db.pragma("foreign_keys = ON");
+export const closeDatabase = () => db.close();
 
 db.exec(`
-  CREATE TABLE IF NOT EXISTS players (
-    id TEXT PRIMARY KEY,
-    token TEXT NOT NULL UNIQUE,
-    created_at TEXT NOT NULL,
-    last_seen_at TEXT NOT NULL
-  );
-
   CREATE TABLE IF NOT EXISTS word_packs (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
@@ -33,18 +31,6 @@ db.exec(`
 const timestamp = () => new Date().toISOString();
 
 const statements = {
-  insertPlayer: db.prepare(`
-    INSERT INTO players (id, token, created_at, last_seen_at)
-    VALUES (@id, @token, @createdAt, @lastSeenAt)
-  `),
-  deletePlayerByToken: db.prepare("DELETE FROM players WHERE token = ?"),
-  updateLastSeen: db.prepare("UPDATE players SET last_seen_at = ? WHERE token = ?"),
-  getPlayerByToken: db.prepare(`
-    SELECT id, token, created_at AS createdAt, last_seen_at AS lastSeenAt
-    FROM players
-    WHERE token = ?
-  `),
-  listPlayers: db.prepare("SELECT id FROM players"),
   insertPack: db.prepare(`
     INSERT INTO word_packs (id, name, description, status, created_by, created_at)
     VALUES (@id, @name, @description, @status, @createdBy, @createdAt)
@@ -68,28 +54,6 @@ const statements = {
   setPackStatus: db.prepare("UPDATE word_packs SET status = ? WHERE id = ?"),
   deletePack: db.prepare("DELETE FROM word_packs WHERE id = ?"),
 };
-
-export function listOnlineIds() {
-  return statements.listPlayers.all().map((row) => row.id);
-}
-
-export function createPlayer({ id, token }) {
-  const now = timestamp();
-  statements.insertPlayer.run({ id, token, createdAt: now, lastSeenAt: now });
-  return { id, token, createdAt: now, lastSeenAt: now };
-}
-
-export function deletePlayerByToken(token) {
-  statements.deletePlayerByToken.run(token);
-}
-
-export function touchPlayer(token) {
-  statements.updateLastSeen.run(timestamp(), token);
-}
-
-export function getPlayerByToken(token) {
-  return statements.getPlayerByToken.get(token);
-}
 
 export function createWordPack(pack, words) {
   const insert = db.transaction(() => {
@@ -115,10 +79,6 @@ export function setWordPackStatus(id, status) {
 
 export function deleteWordPack(id) {
   return statements.deletePack.run(id).changes;
-}
-
-export function resetPlayers() {
-  db.prepare("DELETE FROM players").run();
 }
 
 export function seedWordPacksIfEmpty() {

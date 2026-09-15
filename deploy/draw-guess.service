@@ -1,0 +1,25 @@
+[Unit]
+Description=InkMuse drawing game
+After=network.target
+
+[Service]
+Type=simple
+User=draw-guess
+Group=draw-guess
+WorkingDirectory=/srv/draw-guess/current
+EnvironmentFile=/etc/draw-guess.env
+ExecStart=/opt/draw-guess/bin/node server/src/index.js
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=10
+StateDirectory=draw-guess
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/draw-guess
+
+[Install]
+WantedBy=multi-user.target
