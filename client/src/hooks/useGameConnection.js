@@ -112,5 +112,5 @@ export function useGameConnection(token, onExpired) {
     socketRef.current.send(JSON.stringify(payload));
     return true;
   }, []);
-  return { ...state, connection, connectionError: error, send, applyResponse };
+  return { ...state, connection, connectionError: error, clearConnectionError: () => setError(""), send, applyResponse };
 }

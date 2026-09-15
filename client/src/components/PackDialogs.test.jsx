@@ -1,0 +1,21 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeAll, expect, it, vi } from "vitest";
+import { PackSubmission } from "./PackDialogs.jsx";
+beforeAll(() => { HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); }; });
+it("validates unique word count and keeps failed submissions editable", async () => {
+  const onSubmit = vi.fn().mockRejectedValue(new Error("PACK_NAME_TAKEN"));
+  const onClose = vi.fn();
+  render(<PackSubmission onSubmit={onSubmit} onClose={onClose} />);
+  fireEvent.change(screen.getByLabelText("名称"), { target: { value: "水果" } });
+  fireEvent.change(screen.getByLabelText("介绍（8–120 字）"), { target: { value: "适合热身的水果词包" } });
+  fireEvent.change(screen.getByLabelText(/词语/), { target: { value: "苹果,苹果,苹果,苹果" } });
+  fireEvent.click(screen.getByRole("button", { name: "提交审核" }));
+  expect(screen.getByRole("alert")).toHaveTextContent("不同词语");
+  expect(onSubmit).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText(/词语/), { target: { value: "苹果,香蕉,西瓜,葡萄" } });
+  fireEvent.click(screen.getByRole("button", { name: "提交审核" }));
+  await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("同名词包"));
+  expect(screen.getByLabelText("名称")).toHaveValue("水果");
+  fireEvent(screen.getByRole("dialog"), new Event("cancel", { bubbles: true, cancelable: true }));
+  expect(onClose).toHaveBeenCalled();
+});
