@@ -4,6 +4,7 @@ import { canonicalWord, generateRoomCode, normalizeText, weightedPick } from "./
 
 function blankRound() {
   return {
+    id: nanoid(12),
     status: "waiting",
     number: 0,
     drawerId: null,
@@ -11,7 +12,6 @@ function blankRound() {
     word: null,
     maskedWord: null,
     startedAt: null,
-    pendingGuess: null,
     winnerIds: [],
   };
 }
@@ -28,10 +28,11 @@ function summarizeRoom(room, viewerId) {
     hostId: room.hostId,
     playerCount: room.players.length,
     players: room.players,
-    packs: room.packs,
-    messages: room.messages.slice(-24),
+    packs: room.packs.map(({ words, ...pack }) => ({ ...pack, wordCount: words.length })),
+    messages: room.messages,
     round: {
       ...room.round,
+      pendingGuesses: room.messages.filter((message) => message.roundId === room.round.id && message.status === "pending"),
       word: canSeeWord ? room.round.word : null,
       viewerIsGuesser:
         room.round.status === "active" &&
@@ -50,35 +51,33 @@ export class GameStore {
     this.socketToPlayer = new Map();
     this.disconnectTimers = new Map();
     this.getPacks = getPacks;
+    this.revision = 0;
   }
 
   createSession(playerId, token) {
-    this.sessions.set(token, {
-      playerId,
-      roomCode: null,
-      socket: null,
-      isClosing: false,
-    });
+    if (this.sessions.size >= config.maxSessions) throw new Error("SERVER_FULL");
+    const session = { playerId, token, roomCode: null, sockets: new Set() };
+    this.sessions.set(token, session);
+    this.scheduleDisconnect(token);
+    return { id: playerId, token };
   }
 
   bindSocket(token, socket) {
     const session = this.sessions.get(token);
     if (!session) return null;
     this.cancelDisconnect(token);
-    session.socket = socket;
-    session.isClosing = false;
+    session.sockets.add(socket);
     this.socketToPlayer.set(socket, token);
     return session;
   }
 
   unbindSocket(socket) {
     const token = this.socketToPlayer.get(socket);
-    if (!token) return null;
     this.socketToPlayer.delete(socket);
     const session = this.sessions.get(token);
-    if (session) {
-      session.socket = null;
-    }
+    if (!session) return null;
+    session.sockets.delete(socket);
+    if (!session.sockets.size) this.scheduleDisconnect(token);
     return token;
   }
 
@@ -86,37 +85,40 @@ export class GameStore {
     return this.sessions.get(token);
   }
 
-  markClosing(token) {
-    const session = this.sessions.get(token);
-    if (session) {
-      session.isClosing = true;
-    }
-  }
-
-  scheduleDisconnect(token, onExpire) {
+  scheduleDisconnect(token) {
     this.cancelDisconnect(token);
-    const timer = setTimeout(() => {
-      this.disconnectTimers.delete(token);
-      onExpire(token);
-    }, 8_000);
+    const timer = setTimeout(() => this.removeSession(token), config.disconnectMs);
+    timer.unref?.();
     this.disconnectTimers.set(token, timer);
   }
 
   cancelDisconnect(token) {
-    const timer = this.disconnectTimers.get(token);
-    if (timer) {
-      clearTimeout(timer);
-      this.disconnectTimers.delete(token);
-    }
+    clearTimeout(this.disconnectTimers.get(token));
+    this.disconnectTimers.delete(token);
   }
 
   removeSession(token) {
     this.cancelDisconnect(token);
     const session = this.sessions.get(token);
-    if (session?.roomCode) {
-      this.leaveRoom(session.playerId, session.roomCode);
-    }
+    if (!session) return;
+    const code = session.roomCode;
+    if (code) this.leaveRoom(session.playerId, code);
     this.sessions.delete(token);
+    for (const socket of session.sockets) {
+      this.socketToPlayer.delete(socket);
+      socket.close(4001, "Session expired");
+    }
+    this.changed(code);
+  }
+
+  changed(roomCode) {
+    this.revision += 1;
+    this.notifyRoom?.(roomCode);
+  }
+
+  dispose() {
+    for (const timer of this.disconnectTimers.values()) clearTimeout(timer);
+    this.disconnectTimers.clear();
   }
 
   listLobby() {
@@ -130,6 +132,7 @@ export class GameStore {
   }
 
   createRoom({ playerId, name, mode, packIds }) {
+    if (this.getRoomForPlayer(playerId)) throw new Error("ALREADY_IN_ROOM");
     const code = generateRoomCode(this.rooms);
     const room = {
       code,
@@ -154,6 +157,9 @@ export class GameStore {
 
   joinRoom(playerId, roomCode) {
     const room = this.mustRoom(roomCode);
+    const previous = this.getRoomForPlayer(playerId);
+    if (previous && previous.code !== roomCode) throw new Error("ALREADY_IN_ROOM");
+    if (room.players.some((player) => player.id === playerId)) return room;
     if (room.players.length >= config.maxPlayersPerRoom) {
       throw new Error("ROOM_FULL");
     }
@@ -171,9 +177,14 @@ export class GameStore {
 
   leaveRoom(playerId, roomCode) {
     const room = this.rooms.get(roomCode);
-    if (!room) return;
+    if (!room || !room.players.some((player) => player.id === playerId)) return;
 
     room.players = room.players.filter((player) => player.id !== playerId);
+    for (const message of room.messages) {
+      if (message.status === "pending" && (message.playerId === playerId || [room.round.drawerId, room.round.prompterId].includes(playerId))) {
+        message.status = "closed";
+      }
+    }
     this.pushMessage(room, `${playerId} 离开了房间`);
 
     if (room.hostId === playerId) {
@@ -181,7 +192,7 @@ export class GameStore {
     }
 
     if (room.round.drawerId === playerId || room.round.prompterId === playerId) {
-      room.round = blankRound();
+      room.round = { ...blankRound(), number: room.round.number };
       room.canvas = [];
       this.pushMessage(room, "关键角色离线，本回合已重置");
     }
@@ -211,17 +222,19 @@ export class GameStore {
   }
 
   serializeRoomFor(playerId, roomCode) {
-    return summarizeRoom(this.mustRoom(roomCode), playerId);
+    return summarizeRoom(this.memberRoom(playerId, roomCode), playerId);
   }
 
-  startRound(playerId, roomCode) {
-    const room = this.mustRoom(roomCode);
+  startRound(playerId, roomCode, roundId) {
+    const room = this.memberRoom(playerId, roomCode, roundId);
+    if (!["waiting", "finished"].includes(room.round.status)) throw new Error("ROUND_STATE_INVALID");
     if (room.hostId !== playerId) throw new Error("FORBIDDEN");
-    if (room.players.length < 2) throw new Error("NOT_ENOUGH_PLAYERS");
+    if (room.players.length < (room.mode === "host-judged" ? 3 : 2)) throw new Error("NOT_ENOUGH_PLAYERS");
 
     const drawer = this.pickRole(room, "drawer");
     const prompter = room.mode === "host-judged" ? this.pickRole(room, "prompter", [drawer.id]) : null;
     const nextRound = {
+      id: nanoid(12),
       status: room.mode === "host-judged" ? "collecting-word" : "active",
       number: room.round.number + 1,
       drawerId: drawer.id,
@@ -229,7 +242,6 @@ export class GameStore {
       word: null,
       maskedWord: null,
       startedAt: Date.now(),
-      pendingGuess: null,
       winnerIds: [],
     };
 
@@ -250,64 +262,51 @@ export class GameStore {
     return room;
   }
 
-  submitPrompt(playerId, roomCode, word) {
-    const room = this.mustRoom(roomCode);
+  submitPrompt(playerId, roomCode, word, roundId) {
+    const room = this.memberRoom(playerId, roomCode, roundId);
     if (room.round.prompterId !== playerId || room.round.status !== "collecting-word") {
       throw new Error("FORBIDDEN");
     }
     room.round.word = normalizeText(word);
     room.round.maskedWord = `${room.round.word[0]}${"·".repeat(Math.max(room.round.word.length - 1, 0))}`;
     room.round.status = "active";
-    room.round.pendingGuess = null;
+    room.round.startedAt = Date.now();
     this.pushMessage(room, `${playerId} 已提交词语，开始猜词`);
     return room;
   }
 
-  submitGuess(playerId, roomCode, guess) {
-    const room = this.mustRoom(roomCode);
+  submitGuess(playerId, roomCode, guess, roundId) {
+    const room = this.memberRoom(playerId, roomCode, roundId);
     if (room.round.status !== "active") throw new Error("ROUND_STATE_INVALID");
-    if (playerId === room.round.drawerId || playerId === room.round.prompterId) {
-      throw new Error("ROLE_CANNOT_GUESS");
-    }
-
+    if ([room.round.drawerId, room.round.prompterId].includes(playerId)) throw new Error("ROLE_CANNOT_GUESS");
+    if (room.messages.filter((message) => message.status === "pending").length >= 100) throw new Error("GUESS_QUEUE_FULL");
     const text = normalizeText(guess);
+    const correct = room.mode === "library" && canonicalWord(text) === canonicalWord(room.round.word);
     room.messages.push({
-      id: nanoid(8),
-      type: "guess",
-      text: `${playerId}: ${text}`,
+      id: nanoid(12), type: "guess", playerId, text, roundId: room.round.id,
+      status: correct ? "accepted" : room.mode === "host-judged" ? "pending" : "rejected",
       createdAt: Date.now(),
     });
-
-    if (room.mode === "library" && canonicalWord(text) === canonicalWord(room.round.word)) {
-      this.finishRound(room, [playerId], `${playerId} 猜中了 ${room.round.word}`);
-      return room;
-    }
-
-    if (room.mode === "host-judged") {
-      room.round.pendingGuess = { guesserId: playerId, text };
-      this.pushMessage(room, `等待 ${room.round.prompterId} 裁定 ${playerId} 的答案`);
-    }
+    this.trimMessages(room);
+    if (correct) this.finishRound(room, [playerId], `${playerId} 猜中了 ${room.round.word}`);
     return room;
   }
 
-  judgeGuess(playerId, roomCode, guesserId, accepted) {
-    const room = this.mustRoom(roomCode);
+  judgeGuess(playerId, roomCode, guessId, accepted, roundId) {
+    const room = this.memberRoom(playerId, roomCode, roundId);
+    if (room.round.status !== "active") throw new Error("ROUND_STATE_INVALID");
     if (room.round.prompterId !== playerId) throw new Error("FORBIDDEN");
-    if (!room.round.pendingGuess || room.round.pendingGuess.guesserId !== guesserId) {
-      throw new Error("GUESS_NOT_PENDING");
-    }
-
-    if (accepted) {
-      this.finishRound(room, [guesserId], `${playerId} 判定 ${guesserId} 猜对了`);
-    } else {
-      room.round.pendingGuess = null;
-      this.pushMessage(room, `${playerId} 判定答案不正确，继续游戏`);
-    }
+    const guess = room.messages.find((message) => message.id === guessId && message.roundId === room.round.id && message.status === "pending");
+    if (!guess) throw new Error("GUESS_NOT_PENDING");
+    guess.status = accepted ? "accepted" : "rejected";
+    if (accepted) this.finishRound(room, [guess.playerId], `${playerId} 判定 ${guess.playerId} 猜对了`);
+    else this.pushMessage(room, `${playerId} 判定 ${guess.playerId} 的答案不正确`);
     return room;
   }
 
-  addStroke(playerId, roomCode, stroke) {
-    const room = this.mustRoom(roomCode);
+  addStroke(playerId, roomCode, stroke, roundId) {
+    const room = this.memberRoom(playerId, roomCode, roundId);
+    if (room.round.status !== "active") throw new Error("ROUND_STATE_INVALID");
     if (room.round.drawerId !== playerId) throw new Error("FORBIDDEN");
     room.canvas.push(stroke);
     if (room.canvas.length > 240) {
@@ -315,8 +314,9 @@ export class GameStore {
     }
   }
 
-  clearCanvas(playerId, roomCode) {
-    const room = this.mustRoom(roomCode);
+  clearCanvas(playerId, roomCode, roundId) {
+    const room = this.memberRoom(playerId, roomCode, roundId);
+    if (room.round.status !== "active") throw new Error("ROUND_STATE_INVALID");
     if (room.round.drawerId !== playerId) throw new Error("FORBIDDEN");
     room.canvas = [];
     this.pushMessage(room, `${playerId} 清空了画布`);
@@ -357,7 +357,9 @@ export class GameStore {
 
   finishRound(room, winnerIds, message) {
     room.round.status = "finished";
-    room.round.pendingGuess = null;
+    for (const message of room.messages) {
+      if (message.status === "pending") message.status = "closed";
+    }
     room.round.winnerIds = winnerIds;
     room.canvas = [];
     for (const player of room.players) {
@@ -375,7 +377,22 @@ export class GameStore {
       text,
       createdAt: Date.now(),
     });
-    room.messages = room.messages.slice(-40);
+    this.trimMessages(room);
+  }
+
+  trimMessages(room) {
+    while (room.messages.length > 200) {
+      const index = room.messages.findIndex((message) => message.status !== "pending");
+      if (index < 0) break;
+      room.messages.splice(index, 1);
+    }
+  }
+
+  memberRoom(playerId, code, roundId) {
+    const room = this.mustRoom(code);
+    if (!room.players.some((player) => player.id === playerId)) throw new Error("FORBIDDEN");
+    if (roundId !== undefined && room.round.id !== roundId) throw new Error("ROUND_STATE_INVALID");
+    return room;
   }
 
   mustRoom(code) {

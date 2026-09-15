@@ -4,16 +4,11 @@ import helmet from "helmet";
 import { nanoid } from "nanoid";
 import { config } from "./config.js";
 import {
-  createPlayer,
   createWordPack,
-  deletePlayerByToken,
   deleteWordPack,
-  getPlayerByToken,
-  listOnlineIds,
   listWordPacks,
   seedWordPacksIfEmpty,
   setWordPackStatus,
-  touchPlayer,
 } from "./db.js";
 import { GameStore } from "./gameStore.js";
 import { rateLimit, requireAdmin, validateOrigin } from "./security.js";
@@ -36,9 +31,9 @@ function getToken(req) {
   return auth.startsWith("Bearer ") ? auth.slice(7) : null;
 }
 
-function createUniquePlayerId(preferredId) {
+function createUniquePlayerId(preferredId, store) {
   const base = normalizeText(preferredId) || `Player-${Math.floor(Math.random() * 900 + 100)}`;
-  const online = new Set(listOnlineIds());
+  const online = new Set([...store.sessions.values()].map((session) => session.playerId));
   if (!online.has(base)) return base;
   let nextId = `${base}-${Math.floor(Math.random() * 900 + 100)}`;
   while (online.has(nextId)) {
@@ -48,6 +43,9 @@ function createUniquePlayerId(preferredId) {
 }
 
 const knownErrors = new Set([
+  "ALREADY_IN_ROOM",
+  "SERVER_FULL",
+  "GUESS_QUEUE_FULL",
   "ROOM_NOT_FOUND",
   "ROOM_FULL",
   "FORBIDDEN",
@@ -60,12 +58,14 @@ const knownErrors = new Set([
 export function createApp() {
   const app = express();
   const store = new GameStore({ getPacks: () => listWordPacks({ includePending: true }) });
-  const notifyRoom = (roomCode) => {
-    const notify = app.get("notifyRoom");
-    if (notify && roomCode) notify(roomCode);
-  };
+  const notifyRoom = (roomCode) => store.changed(roomCode);
 
   app.set("store", store);
+  app.use((req, res, next) => {
+    const json = res.json.bind(res);
+    res.json = (body) => json({ ...body, revision: store.revision });
+    next();
+  });
   app.use(helmet({ crossOriginResourcePolicy: false }));
   app.use(cors({ origin: config.clientOrigin }));
   app.use(validateOrigin);
@@ -79,19 +79,16 @@ export function createApp() {
   app.post("/api/session", (req, res) => {
     const parsed = sessionSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Invalid session payload" });
-    const id = createUniquePlayerId(parsed.data.preferredId);
+    const id = createUniquePlayerId(parsed.data.preferredId, store);
     const token = nanoid(24);
-    const player = createPlayer({ id, token });
-    store.createSession(id, token);
+    const player = store.createSession(id, token);
     return res.status(201).json({ player });
   });
 
   app.delete("/api/session", (req, res) => {
     const token = getToken(req);
     if (!token) return res.status(401).json({ error: "Missing token" });
-    store.markClosing(token);
     store.removeSession(token);
-    deletePlayerByToken(token);
     return res.status(204).end();
   });
 
@@ -99,10 +96,9 @@ export function createApp() {
     if (req.path === "/api/health" || req.path === "/api/session") return next();
     const token = getToken(req);
     if (!token) return res.status(401).json({ error: "Missing token" });
-    const player = getPlayerByToken(token);
-    if (!player) return res.status(401).json({ error: "Session invalid" });
-    touchPlayer(token);
-    req.player = player;
+    const session = store.getSession(token);
+    if (!session) return res.status(401).json({ error: "Session invalid" });
+    req.player = { id: session.playerId, token };
     req.authToken = token;
     return next();
   });
@@ -164,7 +160,7 @@ export function createApp() {
   app.post("/api/rounds/start", (req, res) => {
     const parsed = startRoundSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Invalid round payload" });
-    const room = store.startRound(req.player.id, parsed.data.roomCode);
+    const room = store.startRound(req.player.id, parsed.data.roomCode, parsed.data.roundId);
     notifyRoom(room.code);
     return res.json({ room: store.serializeRoomFor(req.player.id, room.code) });
   });
@@ -172,7 +168,7 @@ export function createApp() {
   app.post("/api/rounds/prompt", (req, res) => {
     const parsed = promptSubmitSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Invalid prompt payload" });
-    const room = store.submitPrompt(req.player.id, parsed.data.roomCode, parsed.data.word);
+    const room = store.submitPrompt(req.player.id, parsed.data.roomCode, parsed.data.word, parsed.data.roundId);
     notifyRoom(room.code);
     return res.json({ room: store.serializeRoomFor(req.player.id, room.code) });
   });
@@ -180,7 +176,7 @@ export function createApp() {
   app.post("/api/rounds/guess", (req, res) => {
     const parsed = guessSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Invalid guess payload" });
-    const room = store.submitGuess(req.player.id, parsed.data.roomCode, parsed.data.guess);
+    const room = store.submitGuess(req.player.id, parsed.data.roomCode, parsed.data.guess, parsed.data.roundId);
     notifyRoom(room.code);
     return res.json({ room: store.serializeRoomFor(req.player.id, room.code) });
   });
@@ -188,7 +184,7 @@ export function createApp() {
   app.post("/api/rounds/judge", (req, res) => {
     const parsed = judgeSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Invalid judge payload" });
-    const room = store.judgeGuess(req.player.id, parsed.data.roomCode, parsed.data.guesserId, parsed.data.accepted);
+    const room = store.judgeGuess(req.player.id, parsed.data.roomCode, parsed.data.guessId, parsed.data.accepted, parsed.data.roundId);
     notifyRoom(room.code);
     return res.json({ room: store.serializeRoomFor(req.player.id, room.code) });
   });
@@ -218,7 +214,7 @@ export function createApp() {
         createdAt,
       })),
     );
-    return res.status(201).json({ packs: listWordPacks({ includePending: true }) });
+    return res.status(201).json({ submittedPack: { id: packId, status: "pending" }, packs: listWordPacks() });
   });
 
   app.get("/api/admin/packs", requireAdmin, (_, res) => {
@@ -237,6 +233,8 @@ export function createApp() {
 
   app.use((error, req, res, next) => {
     if (!error) return next();
+    if (error.type === "entity.parse.failed" || error.type === "entity.too.large") return res.status(error.status).json({ error: "Invalid request body" });
+    if (error.code === "SQLITE_CONSTRAINT_UNIQUE") return res.status(409).json({ error: "PACK_NAME_TAKEN" });
     if (knownErrors.has(error.message)) {
       return res.status(400).json({ error: error.message });
     }
