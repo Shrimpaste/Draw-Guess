@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
+import { applyCanvasEvent } from "../canvasState.js";
 
 const emptyState = { player: null, room: null, lobby: [], packs: [], modeDescriptions: [], revision: -1 };
 
@@ -20,16 +21,26 @@ export function useGameConnection(token, onExpired) {
       if (payload.revision !== undefined && payload.revision < previous.revision) return previous;
       const next = { ...previous };
       if (payload.revision !== undefined) next.revision = payload.revision;
+      if (payload.type === "canvas:stroke" || payload.type === "canvas:snapshot") {
+        try { next.room = applyCanvasEvent(previous.room, payload); }
+        catch { return { ...previous, desynced: true }; }
+        return next;
+      }
       for (const key of ["player", "packs", "modeDescriptions", "lobby"]) {
         if (payload[key] !== undefined) next[key] = payload[key];
       }
       if (Object.hasOwn(payload, "room") && (payload.revision ?? 0) >= previous.revision) {
-        next.room = payload.room;
+        next.room = payload.room ? { ...payload.room, canvasResetKey: previous.room?.code === payload.room.code ? previous.room.canvasResetKey || 0 : 0 } : null;
+        next.desynced = false;
         next.revision = payload.revision ?? 0;
       }
       return next;
     });
   }, []);
+
+  useEffect(() => {
+    if (state.desynced) socketRef.current?.close();
+  }, [state.desynced]);
 
   useEffect(() => {
     setState(emptyState);
@@ -77,7 +88,7 @@ export function useGameConnection(token, onExpired) {
         if (stopped) return;
         try {
           const payload = JSON.parse(event.data);
-          if (["connected", "room:update", "lobby:update"].includes(payload.type)) applyResponse(payload);
+          if (["connected", "room:update", "lobby:update", "canvas:stroke", "canvas:snapshot"].includes(payload.type)) applyResponse(payload);
           if (payload.type === "error") setError(payload.error);
         } catch { setError("实时消息无法读取，请重新进入房间。"); }
       };

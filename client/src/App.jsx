@@ -163,8 +163,12 @@ function RoomTile({ item, onJoin }) {
   );
 }
 
-function StatusPanel({ room, roleLabel, isHost, loading, onStartRound }) {
+function StatusPanel({ room, roleLabel, isHost, loading, onStartRound, onSkipRound }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 500); return () => clearInterval(timer); }, []);
+  const remaining = room.round.endsAt ? Math.max(0, Math.ceil((room.round.endsAt - now) / 1000)) : null;
   const facts = [
+    { label: "剩余时间", value: remaining === null ? "—" : `${remaining} 秒` },
     { label: "当前状态", value: statusTextMap[room.round.status] || room.round.status },
     { label: "画师", value: room.round.drawerId || "待定" },
     { label: "出题者", value: room.round.prompterId || "系统词库" },
@@ -178,6 +182,7 @@ function StatusPanel({ room, roleLabel, isHost, loading, onStartRound }) {
           <p className="section-kicker">Round Console</p>
           <h2>{roleLabel}</h2>
         </div>
+        {isHost && ["active", "collecting-word"].includes(room.round.status) ? <button className="ghost-button" onClick={onSkipRound} disabled={loading} type="button">结束本轮</button> : null}
         {isHost ? (
           <button className="primary-button accent-button" onClick={onStartRound} disabled={loading || !["waiting", "finished"].includes(room.round.status) || room.players.length < (room.mode === "host-judged" ? 3 : 2)} type="button">
             开始下一轮
@@ -395,11 +400,11 @@ export default function App() {
   }, [room, isDrawer, isPrompter]);
 
   function sendStroke(stroke) {
-    return send({ type: "canvas:stroke", stroke, roundId: room.round.id });
+    return send({ type: "canvas:stroke", stroke, roundId: room.round.id, epoch: room.canvasEpoch });
   }
 
   function clearCanvas() {
-    send({ type: "canvas:clear", roundId: room.round.id });
+    send({ type: "canvas:clear", roundId: room.round.id, epoch: room.canvasEpoch });
   }
 
   if (!session) {
@@ -596,8 +601,8 @@ export default function App() {
           <section className="stage-grid">
             <div className="stage-main">
               {room.round?.status === "finished" ? <RoundWrapup room={room} /> : null}
-              <StatusPanel room={room} roleLabel={roleLabel} isHost={isHost} loading={loading} onStartRound={() => mutate(() => api.startRound(session.token, room.code, room.round.id))} />
-              <CanvasBoard room={room} isDrawer={isDrawer && room.round.status === "active" && connection === "online"} onStroke={sendStroke} onClear={clearCanvas} />
+              <StatusPanel room={room} roleLabel={roleLabel} isHost={isHost} loading={loading} onStartRound={() => mutate(() => api.startRound(session.token, room.code, room.round.id))} onSkipRound={() => mutate(() => api.skipRound(session.token, room.code, room.round.id))} />
+              <CanvasBoard room={room} isDrawer={isDrawer && room.round.status === "active" && connection === "online"} onStroke={sendStroke} onClear={clearCanvas} onUndo={() => send({ type: "canvas:undo", roundId: room.round.id, epoch: room.canvasEpoch })} />
             </div>
 
             <aside className="stage-side">

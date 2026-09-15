@@ -40,6 +40,8 @@ function summarizeRoom(room, viewerId) {
         (room.mode === "library" || viewerId !== room.round.prompterId),
     },
     canvas: room.canvas,
+    canvasEpoch: room.canvasEpoch,
+    canvasVersion: room.canvasVersion,
     me: room.players.find((player) => player.id === viewerId) || null,
   };
 }
@@ -52,6 +54,7 @@ export class GameStore {
     this.disconnectTimers = new Map();
     this.getPacks = getPacks;
     this.revision = 0;
+    this.roundTimers = new Map();
   }
 
   createSession(playerId, token) {
@@ -117,6 +120,8 @@ export class GameStore {
   }
 
   dispose() {
+    for (const timer of this.roundTimers.values()) clearTimeout(timer);
+    this.roundTimers.clear();
     for (const timer of this.disconnectTimers.values()) clearTimeout(timer);
     this.disconnectTimers.clear();
   }
@@ -146,6 +151,9 @@ export class GameStore {
         { id: nanoid(8), type: "system", text: `${playerId} 创建了房间`, createdAt: Date.now() },
       ],
       canvas: [],
+      canvasEpoch: 0,
+      canvasVersion: 0,
+      canvasPoints: 0,
       roleStats: new Map(),
       recentDrawers: [],
       recentPrompters: [],
@@ -191,10 +199,9 @@ export class GameStore {
       room.hostId = room.players[0]?.id || null;
     }
 
-    if (room.round.drawerId === playerId || room.round.prompterId === playerId) {
-      room.round = { ...blankRound(), number: room.round.number };
-      room.canvas = [];
-      this.pushMessage(room, "关键角色离线，本回合已重置");
+    if (["active", "collecting-word"].includes(room.round.status) &&
+      ([room.round.drawerId, room.round.prompterId].includes(playerId) || room.players.length < (room.mode === "host-judged" ? 3 : 2))) {
+      this.finishRound(room, [], "玩家离开，本轮结束", "player-left");
     }
 
     for (const session of this.sessions.values()) {
@@ -204,6 +211,8 @@ export class GameStore {
     }
 
     if (!room.players.length) {
+      clearTimeout(this.roundTimers.get(roomCode));
+      this.roundTimers.delete(roomCode);
       this.rooms.delete(roomCode);
     }
   }
@@ -253,6 +262,10 @@ export class GameStore {
 
     room.round = nextRound;
     room.canvas = [];
+    room.canvasPoints = 0;
+    room.canvasEpoch += 1;
+    room.canvasVersion += 1;
+    this.scheduleRound(room, room.mode === "host-judged" ? 30 : config.roundSeconds);
     this.pushMessage(
       room,
       room.mode === "host-judged"
@@ -271,6 +284,7 @@ export class GameStore {
     room.round.maskedWord = `${room.round.word[0]}${"·".repeat(Math.max(room.round.word.length - 1, 0))}`;
     room.round.status = "active";
     room.round.startedAt = Date.now();
+    this.scheduleRound(room, config.roundSeconds);
     this.pushMessage(room, `${playerId} 已提交词语，开始猜词`);
     return room;
   }
@@ -304,22 +318,73 @@ export class GameStore {
     return room;
   }
 
-  addStroke(playerId, roomCode, stroke, roundId) {
+  drawingRoom(playerId, roomCode, roundId, epoch) {
     const room = this.memberRoom(playerId, roomCode, roundId);
     if (room.round.status !== "active") throw new Error("ROUND_STATE_INVALID");
     if (room.round.drawerId !== playerId) throw new Error("FORBIDDEN");
-    room.canvas.push(stroke);
-    if (room.canvas.length > 240) {
-      room.canvas = room.canvas.slice(-240);
+    if (epoch !== room.canvasEpoch) throw new Error("CANVAS_CHANGED");
+    return room;
+  }
+
+  addStroke(playerId, roomCode, stroke, roundId, epoch) {
+    const room = this.drawingRoom(playerId, roomCode, roundId, epoch);
+    const existing = room.canvas.find((item) => item.id === stroke.id);
+    if (stroke.offset !== (existing?.points.length || 0)) throw new Error("CANVAS_CHANGED");
+    if (existing && ["color", "width", "tool"].some((key) => existing[key] !== stroke[key])) throw new Error("CANVAS_CHANGED");
+    if (room.canvasPoints + stroke.points.length > 100_000 || (!existing && room.canvas.length >= 2000)) throw new Error("CANVAS_FULL");
+    if (existing) existing.points.push(...stroke.points);
+    else {
+      const { offset, ...value } = stroke;
+      room.canvas.push({ ...value, points: [...stroke.points] });
+    }
+    room.canvasPoints += stroke.points.length;
+    room.canvasVersion += 1;
+    return { type: "canvas:stroke", roomCode, roundId, epoch, version: room.canvasVersion, stroke };
+  }
+
+  clearCanvas(playerId, roomCode, roundId, epoch) {
+    const room = this.drawingRoom(playerId, roomCode, roundId, epoch);
+    room.canvas = [];
+    room.canvasPoints = 0;
+    room.canvasEpoch += 1;
+    room.canvasVersion += 1;
+    return this.canvasSnapshot(room);
+  }
+
+  undoStroke(playerId, roomCode, roundId, epoch) {
+    const room = this.drawingRoom(playerId, roomCode, roundId, epoch);
+    const removed = room.canvas.pop();
+    room.canvasPoints -= removed?.points.length || 0;
+    room.canvasEpoch += 1;
+    room.canvasVersion += 1;
+    return this.canvasSnapshot(room);
+  }
+
+  canvasSnapshot(room) {
+    return { type: "canvas:snapshot", roomCode: room.code, roundId: room.round.id, epoch: room.canvasEpoch, version: room.canvasVersion, canvas: room.canvas };
+  }
+
+  scheduleRound(room, seconds) {
+    clearTimeout(this.roundTimers.get(room.code));
+    room.round.endsAt = Date.now() + seconds * 1000;
+    const timer = setTimeout(() => this.expireRound(room), seconds * 1000);
+    timer.unref?.();
+    this.roundTimers.set(room.code, timer);
+  }
+
+  expireRound(room) {
+    if (["active", "collecting-word"].includes(room.round.status) && Date.now() >= room.round.endsAt) {
+      this.finishRound(room, [], room.round.status === "collecting-word" ? "出题超时，本轮结束" : `时间到，答案是 ${room.round.word}`, "timeout");
+      this.changed(room.code);
     }
   }
 
-  clearCanvas(playerId, roomCode, roundId) {
+  skipRound(playerId, roomCode, roundId) {
     const room = this.memberRoom(playerId, roomCode, roundId);
-    if (room.round.status !== "active") throw new Error("ROUND_STATE_INVALID");
-    if (room.round.drawerId !== playerId) throw new Error("FORBIDDEN");
-    room.canvas = [];
-    this.pushMessage(room, `${playerId} 清空了画布`);
+    if (room.hostId !== playerId) throw new Error("FORBIDDEN");
+    if (!["active", "collecting-word"].includes(room.round.status)) throw new Error("ROUND_STATE_INVALID");
+    this.finishRound(room, [], "房主结束了本轮", "skipped");
+    return room;
   }
 
   resolvePacks(packIds) {
@@ -355,17 +420,21 @@ export class GameStore {
     return pool[Math.floor(Math.random() * pool.length)];
   }
 
-  finishRound(room, winnerIds, message) {
+  finishRound(room, winnerIds, message, reason = "guessed") {
+    clearTimeout(this.roundTimers.get(room.code));
+    this.roundTimers.delete(room.code);
+    room.round.reason = reason;
+    room.round.endsAt = null;
+    room.round.scoreChanges = {};
     room.round.status = "finished";
     for (const message of room.messages) {
       if (message.status === "pending") message.status = "closed";
     }
     room.round.winnerIds = winnerIds;
-    room.canvas = [];
     for (const player of room.players) {
-      if (winnerIds.includes(player.id)) player.score += 2;
-      if (player.id === room.round.drawerId) player.score += 1;
-      if (player.id === room.round.prompterId) player.score += 1;
+      const delta = winnerIds.includes(player.id) ? 2 : winnerIds.length && [room.round.drawerId, room.round.prompterId].includes(player.id) ? 1 : 0;
+      player.score += delta;
+      room.round.scoreChanges[player.id] = delta;
     }
     this.pushMessage(room, message);
   }
@@ -391,6 +460,7 @@ export class GameStore {
   memberRoom(playerId, code, roundId) {
     const room = this.mustRoom(code);
     if (!room.players.some((player) => player.id === playerId)) throw new Error("FORBIDDEN");
+    this.expireRound(room);
     if (roundId !== undefined && room.round.id !== roundId) throw new Error("ROUND_STATE_INVALID");
     return room;
   }
