@@ -5,6 +5,9 @@ export function rateLimit({ windowMs, limit }) {
   return (req, res, next) => {
     const key = req.ip || "unknown";
     const now = Date.now();
+    for (const [ip, bucket] of requests) {
+      if (bucket.resetAt < now) requests.delete(ip);
+    }
     const entry = requests.get(key) || { count: 0, resetAt: now + windowMs };
     if (entry.resetAt < now) {
       entry.count = 0;
@@ -20,7 +23,7 @@ export function rateLimit({ windowMs, limit }) {
 }
 
 export function requireAdmin(req, res, next) {
-  if (req.headers["x-admin-key"] !== config.adminKey) {
+  if (!config.adminKey || req.headers["x-admin-key"] !== config.adminKey) {
     return res.status(403).json({ error: "Admin key invalid" });
   }
   return next();

@@ -8,7 +8,6 @@ const server = http.createServer(app);
 
 const store = app.get("store");
 attachRealtime(server, store);
-app.set("notifyRoom", (roomCode) => store.notifyRoom?.(roomCode));
 
 server.listen(config.port, () => {
   console.log(`Server listening on http://localhost:${config.port}`);

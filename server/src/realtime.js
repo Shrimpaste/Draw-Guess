@@ -1,104 +1,83 @@
 import { WebSocketServer } from "ws";
 import { config } from "./config.js";
-import { deletePlayerByToken, getPlayerByToken, touchPlayer } from "./db.js";
+import { realtimeSchema } from "./validators.js";
 
 function send(socket, payload) {
-  if (socket.readyState === socket.OPEN) {
-    socket.send(JSON.stringify(payload));
-  }
+  if (socket.readyState !== socket.OPEN) return;
+  if (socket.bufferedAmount > 4 * 1024 * 1024) return socket.terminate();
+  socket.send(JSON.stringify(payload));
 }
 
 export function attachRealtime(server, store) {
-  const wss = new WebSocketServer({ server, path: "/ws" });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
+  const upgrade = (request, socket, head) => {
+    let url;
+    try { url = new URL(request.url, "http://localhost"); }
+    catch { socket.destroy(); return; }
+    const session = store.getSession(url.searchParams.get("token"));
+    const allowed = !request.headers.origin || request.headers.origin === config.clientOrigin;
+    if (url.pathname !== "/ws" || !session || !allowed || session.sockets.size >= 4) {
+      socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+      return;
+    }
+    wss.handleUpgrade(request, socket, head, (ws) => wss.emit("connection", ws, session.token));
+  };
+  server.on("upgrade", upgrade);
 
-  function broadcastRoom(roomCode) {
-    const room = store.getRoom(roomCode);
-    if (!room) return;
+  const snapshot = (session) => ({
+    type: "room:update", revision: store.revision,
+    room: session.roomCode ? store.serializeRoomFor(session.playerId, session.roomCode) : null,
+  });
+  function broadcastState(roomCode) {
+    const lobby = store.listLobby();
     for (const session of store.sessions.values()) {
-      if (session.roomCode === roomCode && session.socket) {
-        send(session.socket, {
-          type: "room:update",
-          room: store.serializeRoomFor(session.playerId, roomCode),
-          lobby: store.listLobby(),
-        });
+      for (const socket of session.sockets) {
+        if (session.roomCode === roomCode || !session.roomCode) send(socket, snapshot(session));
+        if (!session.roomCode) send(socket, { type: "lobby:update", lobby, revision: store.revision });
       }
     }
   }
-
-  wss.on("connection", (socket, request) => {
-    const url = new URL(request.url, `http://${request.headers.host}`);
-    const token = url.searchParams.get("token");
-    if (!token) {
-      socket.close();
-      return;
-    }
-
-    const player = getPlayerByToken(token);
-    if (!player) {
-      socket.close();
-      return;
-    }
-
-    touchPlayer(token);
+  wss.on("error", (error) => console.error("Realtime server error:", error.message));
+  wss.on("connection", (socket, token) => {
+    socket.on("error", () => socket.terminate());
     const session = store.bindSocket(token, socket);
-    send(socket, { type: "connected", playerId: player.id, lobby: store.listLobby() });
-    if (session?.roomCode) {
-      broadcastRoom(session.roomCode);
-    }
-
+    if (!session) return socket.close(4001, "Session expired");
+    socket.alive = true;
+    socket.on("pong", () => { socket.alive = true; });
+    send(socket, { type: "connected", playerId: session.playerId, lobby: store.listLobby(), revision: store.revision });
+    send(socket, snapshot(session));
+    let windowStart = Date.now();
+    let count = 0;
     socket.on("message", (raw) => {
+      if (Date.now() - windowStart >= 1000) { windowStart = Date.now(); count = 0; }
+      if (++count > 60) return socket.close(4008, "Rate limit");
       try {
-        const data = JSON.parse(String(raw));
+        const parsed = realtimeSchema.safeParse(JSON.parse(String(raw)));
+        if (!parsed.success) return send(socket, { type: "error", error: "INVALID_REALTIME_MESSAGE" });
         const active = store.getSession(token);
-        const roomCode = active?.roomCode;
-        if (!roomCode) return;
-
-        if (data.type === "canvas:stroke") {
-          const points = Array.isArray(data.stroke?.points) ? data.stroke.points.slice(0, config.maxStrokePoints) : [];
-          store.addStroke(player.id, roomCode, {
-            color: data.stroke?.color || "#111827",
-            width: Math.min(Math.max(Number(data.stroke?.width || 4), 1), 24),
-            points,
-          });
-        }
-
-        if (data.type === "canvas:clear") {
-          store.clearCanvas(player.id, roomCode);
-        }
-
-        broadcastRoom(roomCode);
+        if (!active?.roomCode) return send(socket, { type: "error", error: "ROOM_NOT_FOUND" });
+        const data = parsed.data;
+        if (data.type === "canvas:stroke") store.addStroke(active.playerId, active.roomCode, data.stroke, data.roundId);
+        if (data.type === "canvas:clear") store.clearCanvas(active.playerId, active.roomCode, data.roundId);
+        store.changed(active.roomCode);
       } catch (error) {
-        send(socket, { type: "error", error: error.message || "Realtime error" });
+        send(socket, { type: "error", error: error instanceof SyntaxError ? "INVALID_REALTIME_MESSAGE" : error.message });
       }
     });
-
-    socket.on("close", () => {
-      const closedToken = store.unbindSocket(socket);
-      if (!closedToken) return;
-
-      const active = store.getSession(closedToken);
-      const roomCode = active?.roomCode;
-      const isClosing = active?.isClosing;
-
-      store.scheduleDisconnect(closedToken, (expiredToken) => {
-        const expiredSession = store.getSession(expiredToken);
-        if (!expiredSession || expiredSession.socket) {
-          return;
-        }
-        const expiredRoomCode = expiredSession.roomCode;
-        store.removeSession(expiredToken);
-        deletePlayerByToken(expiredToken);
-        if (expiredRoomCode) {
-          broadcastRoom(expiredRoomCode);
-        }
-      });
-
-      if (isClosing && roomCode) {
-        broadcastRoom(roomCode);
-      }
-    });
+    socket.on("close", () => store.unbindSocket(socket));
   });
-
-  store.notifyRoom = broadcastRoom;
+  const heartbeat = setInterval(() => {
+    for (const socket of wss.clients) {
+      if (!socket.alive) socket.terminate();
+      else { socket.alive = false; socket.ping(); }
+    }
+  }, 30_000);
+  heartbeat.unref();
+  wss.on("close", () => {
+    clearInterval(heartbeat);
+    server.off("upgrade", upgrade);
+    store.notifyRoom = undefined;
+  });
+  store.notifyRoom = broadcastState;
   return wss;
 }

@@ -31,20 +31,42 @@ export const wordPackSchema = z.object({
 
 export const startRoundSchema = z.object({
   roomCode: z.string().trim().length(config.roomCodeLength),
+  roundId: z.string().min(1).max(32),
 });
 
 export const promptSubmitSchema = z.object({
   roomCode: z.string().trim().length(config.roomCodeLength),
+  roundId: z.string().min(1).max(32),
   word: trimmedString(config.maxWordLength),
 });
 
 export const guessSchema = z.object({
   roomCode: z.string().trim().length(config.roomCodeLength),
+  roundId: z.string().min(1).max(32),
   guess: trimmedString(config.maxWordLength),
 });
 
 export const judgeSchema = z.object({
   roomCode: z.string().trim().length(config.roomCodeLength),
-  guesserId: z.string().trim().min(1).max(32),
+  roundId: z.string().min(1).max(32),
+  guessId: z.string().min(1).max(32),
   accepted: z.boolean(),
 });
+
+const pointSchema = z.object({
+  x: z.number().finite().min(0).max(960),
+  y: z.number().finite().min(0).max(620),
+}).strict();
+
+export const realtimeSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("canvas:stroke"),
+    roundId: z.string().min(1).max(32),
+    stroke: z.object({
+      color: z.string().regex(/^#[0-9a-f]{6}$/i),
+      width: z.number().finite().min(1).max(24),
+      points: z.array(pointSchema).min(1).max(config.maxStrokePoints),
+    }).strict(),
+  }).strict(),
+  z.object({ type: z.literal("canvas:clear"), roundId: z.string().min(1).max(32) }).strict(),
+]);

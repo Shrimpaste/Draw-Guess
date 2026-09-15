@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useGameConnection } from "./hooks/useGameConnection.js";
 import { api } from "./api.js";
 import { CanvasBoard } from "./components/CanvasBoard.jsx";
 
@@ -178,7 +179,7 @@ function StatusPanel({ room, roleLabel, isHost, loading, onStartRound }) {
           <h2>{roleLabel}</h2>
         </div>
         {isHost ? (
-          <button className="primary-button accent-button" onClick={onStartRound} disabled={loading} type="button">
+          <button className="primary-button accent-button" onClick={onStartRound} disabled={loading || !["waiting", "finished"].includes(room.round.status) || room.players.length < (room.mode === "host-judged" ? 3 : 2)} type="button">
             开始下一轮
           </button>
         ) : null}
@@ -284,7 +285,7 @@ function ActivityPanel({ room }) {
         <div className="chat-log">
           {room.messages.map((message) => (
             <div className={`chat-line ${message.type}`} key={message.id}>
-              {message.text}
+              {message.playerId ? `${message.playerId}: ` : ""}{message.text}
             </div>
           ))}
         </div>
@@ -295,11 +296,6 @@ function ActivityPanel({ room }) {
 
 export default function App() {
   const [session, setSession] = useState(null);
-  const [player, setPlayer] = useState(null);
-  const [lobby, setLobby] = useState([]);
-  const [packs, setPacks] = useState([]);
-  const [room, setRoom] = useState(null);
-  const [modeDescriptions, setModeDescriptions] = useState([]);
   const [roomForm, setRoomForm] = useState(defaultRoomForm);
   const [packForm, setPackForm] = useState(defaultPackForm);
   const [joinCode, setJoinCode] = useState("");
@@ -310,8 +306,17 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [packPickerOpen, setPackPickerOpen] = useState(false);
   const [packModalOpen, setPackModalOpen] = useState(false);
-  const socketRef = useRef(null);
-  const reconnectRef = useRef(null);
+  const { player, lobby, packs, room, modeDescriptions, connection, connectionError, send, applyResponse } = useGameConnection(session?.token, () => {
+    localStorage.removeItem("draw-guess-session");
+    setSession(null);
+    setError("会话已过期或服务已重启，请重新进入大厅。");
+  });
+  useEffect(() => {
+    if (session) localStorage.setItem("draw-guess-session", JSON.stringify(session));
+  }, [session]);
+  useEffect(() => {
+    if (packs.length) setRoomForm((previous) => ({ ...previous, packIds: previous.packIds.length ? previous.packIds : [packs[0].id] }));
+  }, [packs]);
 
   const me = room?.me || player;
   const isDrawer = room?.round?.drawerId === me?.id;
@@ -322,79 +327,12 @@ export default function App() {
   useEffect(() => {
     const saved = localStorage.getItem("draw-guess-session");
     if (!saved) return;
-    setSession(JSON.parse(saved));
+    try {
+      const value = JSON.parse(saved);
+      if (typeof value?.token === "string") setSession(value);
+      else localStorage.removeItem("draw-guess-session");
+    } catch { localStorage.removeItem("draw-guess-session"); }
   }, []);
-
-  async function bootstrap(token) {
-    const payload = await api.bootstrap(token);
-    setPlayer(payload.player);
-    setLobby(payload.lobby);
-    setPacks(payload.packs);
-    setRoom(payload.room);
-    setModeDescriptions(payload.modeDescriptions);
-    setRoomForm((prev) => ({
-      ...prev,
-      packIds: prev.packIds.length ? prev.packIds : payload.packs.slice(0, 1).map((pack) => pack.id),
-    }));
-  }
-
-  useEffect(() => {
-    if (!session?.token) return;
-
-    localStorage.setItem("draw-guess-session", JSON.stringify(session));
-    let closedByCleanup = false;
-
-    const connect = async () => {
-      try {
-        setLoading(true);
-        await bootstrap(session.token);
-        setError("");
-      } catch (issue) {
-        setError(issue.message);
-        localStorage.removeItem("draw-guess-session");
-        setSession(null);
-        setLoading(false);
-        return;
-      }
-
-      const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-      const socket = new WebSocket(`${protocol}://${window.location.host}/ws?token=${session.token}`);
-      socketRef.current = socket;
-
-      socket.onopen = () => {
-        setLoading(false);
-      };
-
-      socket.onmessage = (event) => {
-        const payload = JSON.parse(event.data);
-        if (payload.type === "room:update") {
-          setRoom(payload.room);
-          setLobby(payload.lobby || []);
-        }
-        if (payload.type === "connected") {
-          setLobby(payload.lobby || []);
-        }
-        if (payload.type === "error") {
-          setError(payload.error || "实时连接异常");
-        }
-      };
-
-      socket.onclose = () => {
-        if (closedByCleanup) return;
-        reconnectRef.current = setTimeout(() => {
-          connect().catch(() => {});
-        }, 1200);
-      };
-    };
-
-    connect().catch(() => {});
-
-    return () => {
-      closedByCleanup = true;
-      if (reconnectRef.current) clearTimeout(reconnectRef.current);
-      socketRef.current?.close();
-    };
-  }, [session?.token]);
 
   async function handleLogin(event) {
     event.preventDefault();
@@ -402,6 +340,7 @@ export default function App() {
       setLoading(true);
       const payload = await api.createSession(preferredId);
       setSession(payload.player);
+      setLoading(false);
       setError("");
     } catch (issue) {
       setError(issue.message);
@@ -413,14 +352,8 @@ export default function App() {
     if (session?.token) {
       await api.deleteSession(session.token).catch(() => {});
     }
-    if (reconnectRef.current) clearTimeout(reconnectRef.current);
-    socketRef.current?.close();
     localStorage.removeItem("draw-guess-session");
     setSession(null);
-    setPlayer(null);
-    setLobby([]);
-    setPacks([]);
-    setRoom(null);
     setError("");
     setLoading(false);
   }
@@ -430,13 +363,7 @@ export default function App() {
       setLoading(true);
       setError("");
       const payload = await task();
-      if (Object.prototype.hasOwnProperty.call(payload || {}, "room")) {
-        setRoom(payload.room || null);
-      }
-      if (payload?.lobby) setLobby(payload.lobby);
-      if (payload?.packs) {
-        setPacks(payload.packs.filter((pack) => pack.status === "approved" || pack.status === undefined));
-      }
+      applyResponse(payload, session.token);
       if (options.resetPrompt) setPromptWord("");
       if (options.resetGuess) setGuess("");
       if (options.closePackModal) {
@@ -468,11 +395,11 @@ export default function App() {
   }, [room, isDrawer, isPrompter]);
 
   function sendStroke(stroke) {
-    socketRef.current?.send(JSON.stringify({ type: "canvas:stroke", stroke }));
+    return send({ type: "canvas:stroke", stroke, roundId: room.round.id });
   }
 
   function clearCanvas() {
-    socketRef.current?.send(JSON.stringify({ type: "canvas:clear" }));
+    send({ type: "canvas:clear", roundId: room.round.id });
   }
 
   if (!session) {
@@ -495,7 +422,7 @@ export default function App() {
             <button className="primary-button accent-button" type="submit" disabled={loading}>
               {loading ? "正在连接..." : "创建临时身份"}
             </button>
-            <Feedback error={error} loading={loading} room={null} />
+            <Feedback error={error || connectionError} loading={loading} room={null} />
           </form>
         </main>
       </div>
@@ -519,7 +446,7 @@ export default function App() {
             </div>
           </header>
 
-          <Feedback error={error} loading={loading} room={room} />
+          <Feedback error={error || connectionError} loading={loading} room={room} />
 
           <section className="lobby-grid page-enter">
             <aside className="lobby-sidebar">
@@ -661,16 +588,16 @@ export default function App() {
 
           <div className="stage-banner page-enter">
             <span className="live-dot" />
-            房间连接稳定，画布实时同步已开启
+            {connection === "online" ? "已连接 · 实时同步" : "连接恢复中，请稍候…"}
           </div>
 
-          <Feedback error={error} loading={loading} room={room} />
+          <Feedback error={error || connectionError} loading={loading} room={room} />
 
           <section className="stage-grid">
             <div className="stage-main">
               {room.round?.status === "finished" ? <RoundWrapup room={room} /> : null}
-              <StatusPanel room={room} roleLabel={roleLabel} isHost={isHost} loading={loading} onStartRound={() => mutate(() => api.startRound(session.token, room.code))} />
-              <CanvasBoard room={room} isDrawer={isDrawer} onStroke={sendStroke} onClear={clearCanvas} />
+              <StatusPanel room={room} roleLabel={roleLabel} isHost={isHost} loading={loading} onStartRound={() => mutate(() => api.startRound(session.token, room.code, room.round.id))} />
+              <CanvasBoard room={room} isDrawer={isDrawer && room.round.status === "active" && connection === "online"} onStroke={sendStroke} onClear={clearCanvas} />
             </div>
 
             <aside className="stage-side">
@@ -687,7 +614,7 @@ export default function App() {
                     className="stack"
                     onSubmit={(event) => {
                       event.preventDefault();
-                      mutate(() => api.submitPrompt(session.token, room.code, promptWord), { resetPrompt: true });
+                      mutate(() => api.submitPrompt(session.token, room.code, promptWord, room.round.id), { resetPrompt: true });
                     }}
                   >
                     <label>
@@ -705,7 +632,7 @@ export default function App() {
                     className="stack"
                     onSubmit={(event) => {
                       event.preventDefault();
-                      mutate(() => api.submitGuess(session.token, room.code, guess), { resetGuess: true });
+                      mutate(() => api.submitGuess(session.token, room.code, guess, room.round.id), { resetGuess: true });
                     }}
                   >
                     <label>
@@ -718,30 +645,30 @@ export default function App() {
                   </form>
                 ) : null}
 
-                {isPrompter && room.round.pendingGuess ? (
-                  <div className="judge-panel">
+                {isPrompter ? room.round.pendingGuesses.map((pending) => (
+                  <div className="judge-panel" key={pending.id}>
                     <p className="mini-kicker">待裁定答案</p>
                     <h3>
-                      {room.round.pendingGuess.guesserId}: {room.round.pendingGuess.text}
+                      {pending.playerId}: {pending.text}
                     </h3>
                     <div className="inline-actions">
                       <button
                         className="primary-button accent-button"
-                        onClick={() => mutate(() => api.judgeGuess(session.token, room.code, room.round.pendingGuess.guesserId, true))}
+                        onClick={() => mutate(() => api.judgeGuess(session.token, room.code, pending.id, true, room.round.id))}
                         type="button"
                       >
                         判定正确
                       </button>
                       <button
                         className="ghost-button"
-                        onClick={() => mutate(() => api.judgeGuess(session.token, room.code, room.round.pendingGuess.guesserId, false))}
+                        onClick={() => mutate(() => api.judgeGuess(session.token, room.code, pending.id, false, room.round.id))}
                         type="button"
                       >
                         继续游戏
                       </button>
                     </div>
                   </div>
-                ) : null}
+                )) : null}
               </section>
 
               <ActivityPanel room={room} />
