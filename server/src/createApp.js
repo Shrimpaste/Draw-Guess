@@ -165,6 +165,14 @@ export function createApp() {
     return res.json({ room: store.serializeRoomFor(req.player.id, room.code) });
   });
 
+  app.post("/api/rounds/skip", (req, res) => {
+    const parsed = startRoundSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid round payload" });
+    const room = store.skipRound(req.player.id, parsed.data.roomCode, parsed.data.roundId);
+    notifyRoom(room.code);
+    return res.json({ room: store.serializeRoomFor(req.player.id, room.code) });
+  });
+
   app.post("/api/rounds/prompt", (req, res) => {
     const parsed = promptSubmitSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Invalid prompt payload" });

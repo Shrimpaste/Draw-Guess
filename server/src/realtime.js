@@ -57,11 +57,20 @@ export function attachRealtime(server, store) {
         const active = store.getSession(token);
         if (!active?.roomCode) return send(socket, { type: "error", error: "ROOM_NOT_FOUND" });
         const data = parsed.data;
-        if (data.type === "canvas:stroke") store.addStroke(active.playerId, active.roomCode, data.stroke, data.roundId);
-        if (data.type === "canvas:clear") store.clearCanvas(active.playerId, active.roomCode, data.roundId);
-        store.changed(active.roomCode);
+        let event;
+        if (data.type === "canvas:stroke") event = store.addStroke(active.playerId, active.roomCode, data.stroke, data.roundId, data.epoch);
+        if (data.type === "canvas:clear") event = store.clearCanvas(active.playerId, active.roomCode, data.roundId, data.epoch);
+        if (data.type === "canvas:undo") event = store.undoStroke(active.playerId, active.roomCode, data.roundId, data.epoch);
+        store.revision += 1;
+        for (const peer of store.sessions.values()) {
+          if (peer.roomCode === active.roomCode) {
+            for (const client of peer.sockets) send(client, { ...event, revision: store.revision });
+          }
+        }
       } catch (error) {
         send(socket, { type: "error", error: error instanceof SyntaxError ? "INVALID_REALTIME_MESSAGE" : error.message });
+        const room = store.getRoom(store.getSession(token)?.roomCode);
+        if (room) send(socket, { ...store.canvasSnapshot(room), revision: store.revision });
       }
     });
     socket.on("close", () => store.unbindSocket(socket));

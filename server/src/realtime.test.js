@@ -53,7 +53,7 @@ it("rejects invalid points and unknown messages without corrupting the canvas", 
   const room = store.createRoom({ playerId: host.id, name: "test", mode: "library" });
   store.joinRoom("guest", room.code); store.startRound(host.id, room.code, room.round.id);
   room.round.drawerId = host.id;
-  socket.send(JSON.stringify({ type: "canvas:stroke", roundId: room.round.id, stroke: { points: [null], color: "#000000", width: 4 } }));
+  socket.send(JSON.stringify({ type: "canvas:stroke", roundId: room.round.id, epoch: room.canvasEpoch, stroke: { id: "bad", offset: 0, tool: "pen", points: [null], color: "#000000", width: 4 } }));
   await message(socket, (m) => m.error === "INVALID_REALTIME_MESSAGE");
   expect(room.canvas).toHaveLength(0);
   socket.messages = [];
@@ -68,6 +68,27 @@ it.each(["frame", "oversized"])("survives %s protocol errors", async (kind) => {
   else socket.send("x".repeat(65537));
   await closed;
   expect((await request(app).get("/api/health")).status).toBe(200);
+});
+
+it("streams small chunks to a viewer before the stroke ends and rejects old canvas epochs", async () => {
+  const artist = await player("Artist"), viewer = await player("Viewer");
+  const room = store.createRoom({ playerId: artist.id, name: "test", mode: "library" });
+  store.joinRoom(viewer.id, room.code); store.startRound(artist.id, room.code, room.round.id);
+  room.round.drawerId = artist.id;
+  const a = await connect(artist), b = await connect(viewer);
+  const packet = { type: "canvas:stroke", roundId: room.round.id, epoch: room.canvasEpoch, stroke: { id: "stroke", tool: "pen", offset: 0, width: 4, color: "#000000", points: [{ x: 1, y: 1 }] } };
+  a.send(JSON.stringify(packet));
+  const first = await message(b, (m) => m.type === "canvas:stroke");
+  expect(first.room).toBeUndefined();
+  expect(first.stroke.points).toHaveLength(1);
+  a.send(JSON.stringify({ ...packet, stroke: { ...packet.stroke, offset: 1, points: [{ x: 2, y: 2 }] } }));
+  await message(b, (m) => m.type === "canvas:stroke" && m.stroke.offset === 1);
+  expect(room.canvas[0].points).toHaveLength(2);
+  a.send(JSON.stringify({ type: "canvas:clear", roundId: room.round.id, epoch: room.canvasEpoch }));
+  await message(b, (m) => m.type === "canvas:snapshot" && !m.canvas.length);
+  a.send(JSON.stringify(packet));
+  await message(a, (m) => m.error === "CANVAS_CHANGED");
+  expect(room.canvas).toHaveLength(0);
 });
 it("rejects foreign origins and sessions unknown to a restarted app", async () => {
   const user = await player("Restart");

@@ -30,6 +30,7 @@ export const api = {
   joinRoom: (token, roomCode) => request("/api/rooms/join", { method: "POST", token, body: { roomCode } }),
   leaveRoom: (token) => request("/api/rooms/leave", { method: "POST", token }),
   startRound: (token, roomCode, roundId) => request("/api/rounds/start", { method: "POST", token, body: { roomCode, roundId } }),
+  skipRound: (token, roomCode, roundId) => request("/api/rounds/skip", { method: "POST", token, body: { roomCode, roundId } }),
   submitPrompt: (token, roomCode, word, roundId) =>
     request("/api/rounds/prompt", { method: "POST", token, body: { roomCode, word, roundId } }),
   submitGuess: (token, roomCode, guess, roundId) =>

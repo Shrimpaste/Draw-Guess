@@ -58,15 +58,18 @@ const pointSchema = z.object({
   y: z.number().finite().min(0).max(620),
 }).strict();
 
+const canvasBase = { roundId: z.string().min(1).max(32), epoch: z.number().int().min(0) };
 export const realtimeSchema = z.discriminatedUnion("type", [
   z.object({
-    type: z.literal("canvas:stroke"),
-    roundId: z.string().min(1).max(32),
+    type: z.literal("canvas:stroke"), ...canvasBase,
     stroke: z.object({
+      id: z.string().min(1).max(64), offset: z.number().int().min(0),
+      tool: z.enum(["pen", "eraser"]),
       color: z.string().regex(/^#[0-9a-f]{6}$/i),
       width: z.number().finite().min(1).max(24),
       points: z.array(pointSchema).min(1).max(config.maxStrokePoints),
     }).strict(),
   }).strict(),
-  z.object({ type: z.literal("canvas:clear"), roundId: z.string().min(1).max(32) }).strict(),
+  z.object({ type: z.literal("canvas:clear"), ...canvasBase }).strict(),
+  z.object({ type: z.literal("canvas:undo"), ...canvasBase }).strict(),
 ]);
