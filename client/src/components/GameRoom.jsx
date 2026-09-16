@@ -9,7 +9,7 @@ import { Copy, Check, Timer, Trophy, Users } from "lucide-react";
 import { PlayerStrip } from "./PlayerStrip.jsx";
 import { Input } from "./ui/field.jsx";
 
-export const modes = { library: "词库局", "host-judged": "裁定局" };
+import { modes } from "../modes.js";
 const statuses = {
   waiting: "等待开局",
   "collecting-word": "等待出题",

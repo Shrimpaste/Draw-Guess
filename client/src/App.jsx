@@ -1,11 +1,32 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useGameConnection } from "./hooks/useGameConnection.js";
 import { api } from "./api.js";
 import { errorText } from "./errors.js";
 import { Button } from "./components/ui/button.jsx";
 import { ConfirmAction } from "./components/ui/overlay.jsx";
-import { GameRoom, modes } from "./components/GameRoom.jsx";
-import { PackAdmin, PackSubmission } from "./components/PackDialogs.jsx";
+import { Input } from "./components/ui/field.jsx";
+import { Toaster, toast } from "sonner";
+const Lobby = lazy(() =>
+  import("./components/Lobby.jsx").then((module) => ({
+    default: module.Lobby,
+  })),
+);
+const GameRoom = lazy(() =>
+  import("./components/GameRoom.jsx").then((module) => ({
+    default: module.GameRoom,
+  })),
+);
+const PackSubmission = lazy(() =>
+  import("./components/PackDialogs.jsx").then((module) => ({
+    default: module.PackSubmission,
+  })),
+);
+const PackAdmin = lazy(() =>
+  import("./components/PackDialogs.jsx").then((module) => ({
+    default: module.PackAdmin,
+  })),
+);
+const emptyDraft = { name: "", description: "", words: "" };
 
 function savedSession() {
   try {
@@ -33,7 +54,8 @@ export default function App() {
   const [joinCode, setJoinCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [packDraft, setPackDraft] = useState(emptyDraft);
+  const inFlight = useRef(false);
   const [dialog, setDialog] = useState(null);
   const {
     player,
@@ -55,20 +77,21 @@ export default function App() {
     else {
       localStorage.removeItem("draw-guess-session");
       setDialog(null);
+      setPackDraft(emptyDraft);
     }
   }, [session]);
   useEffect(() => {
     setError("");
-    setNotice("");
   }, [room?.code]);
   async function gameAction(task) {
     applyResponse(await task(), session?.token);
     return true;
   }
   async function mutate(task) {
+    if (inFlight.current) return false;
+    inFlight.current = true;
     setBusy(true);
     setError("");
-    setNotice("");
     try {
       applyResponse(await task(), session?.token);
       return true;
@@ -76,6 +99,7 @@ export default function App() {
       setError(errorText(issue));
       return false;
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -142,11 +166,6 @@ export default function App() {
           </button>
         </div>
       )}
-      {notice && (
-        <p className="feedback feedback-success" role="status">
-          {notice}
-        </p>
-      )}
       {!session ? (
         <main className="login-layout">
           <section className="login-intro">
@@ -201,7 +220,8 @@ export default function App() {
             <h2>进入大厅</h2>
             <label>
               怎么称呼你？
-              <input
+              <Input
+                pattern="[\p{L}\p{N}\s_\-]+"
                 maxLength={18}
                 value={preferredId}
                 onChange={(event) => setPreferredId(event.target.value)}
@@ -210,258 +230,134 @@ export default function App() {
               />
             </label>
             <small>支持中英文、数字、空格、下划线与短横线。</small>
-            <button className="primary-button" disabled={busy}>
+            <Button type="submit" pending={busy}>
               {busy ? "正在连接…" : "开始玩 →"}
-            </button>
+            </Button>
             <p className="muted">
               临时身份保存在当前浏览器。离开后断线保留 60 秒。
             </p>
           </form>
         </main>
       ) : room ? (
-        <GameRoom
-          room={room}
-          connection={connection}
-          busy={busy}
-          onStart={() =>
-            gameAction(() =>
-              api.startRound(session.token, room.code, room.round.id),
-            )
+        <Suspense
+          fallback={
+            <main className="page-loading" role="status">
+              画室正在准备中…
+            </main>
           }
-          onSkip={() =>
-            gameAction(() =>
-              api.skipRound(session.token, room.code, room.round.id),
-            )
-          }
-          onGuess={(guess) =>
-            gameAction(() =>
-              api.submitGuess(session.token, room.code, guess, room.round.id),
-            )
-          }
-          onPrompt={(word) =>
-            gameAction(() =>
-              api.submitPrompt(session.token, room.code, word, room.round.id),
-            )
-          }
-          onJudge={(id, accepted) =>
-            gameAction(() =>
-              api.judgeGuess(
-                session.token,
-                room.code,
-                id,
-                accepted,
-                room.round.id,
-              ),
-            )
-          }
-          onCanvas={(type, stroke) =>
-            send({
-              type,
-              ...(stroke ? { stroke } : {}),
-              roundId: room.round.id,
-              epoch: room.canvasEpoch,
-            })
-          }
-        />
+        >
+          <GameRoom
+            room={room}
+            connection={connection}
+            busy={busy}
+            onStart={() =>
+              gameAction(() =>
+                api.startRound(session.token, room.code, room.round.id),
+              )
+            }
+            onSkip={() =>
+              gameAction(() =>
+                api.skipRound(session.token, room.code, room.round.id),
+              )
+            }
+            onGuess={(guess) =>
+              gameAction(() =>
+                api.submitGuess(session.token, room.code, guess, room.round.id),
+              )
+            }
+            onPrompt={(word) =>
+              gameAction(() =>
+                api.submitPrompt(session.token, room.code, word, room.round.id),
+              )
+            }
+            onJudge={(id, accepted) =>
+              gameAction(() =>
+                api.judgeGuess(
+                  session.token,
+                  room.code,
+                  id,
+                  accepted,
+                  room.round.id,
+                ),
+              )
+            }
+            onCanvas={(type, stroke) =>
+              send({
+                type,
+                ...(stroke ? { stroke } : {}),
+                roundId: room.round.id,
+                epoch: room.canvasEpoch,
+              })
+            }
+          />
+        </Suspense>
       ) : (
-        <main className="lobby">
-          <div className="lobby-heading">
-            <div>
-              <span className="eyebrow">找个位置，落笔吧</span>
-              <h1>今天，画点什么？</h1>
-            </div>
-            <button type="button" onClick={() => setDialog("submit")}>
-              ＋ 投稿词包
-            </button>
-          </div>
-          <div className="lobby-layout">
-            <section className="compose-panel">
-              <h2>开一间画室</h2>
-              <form
-                className="stack"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  mutate(() => api.createRoom(session.token, roomForm));
-                }}
-              >
-                <label>
-                  房间名称
-                  <input
-                    required
-                    maxLength={32}
-                    value={roomForm.name}
-                    onChange={(event) =>
-                      setRoomForm({ ...roomForm, name: event.target.value })
-                    }
-                  />
-                </label>
-                <fieldset className="mode-picker">
-                  <legend>玩法</legend>
-                  {Object.entries(modes).map(([id, name]) => (
-                    <label key={id}>
-                      <input
-                        type="radio"
-                        name="mode"
-                        checked={roomForm.mode === id}
-                        onChange={() => setRoomForm({ ...roomForm, mode: id })}
-                      />
-                      {name}
-                    </label>
-                  ))}
-                </fieldset>
-                <p className="mode-description">
-                  {roomForm.mode === "library"
-                    ? "至少 2 人。随机抽词，一人画，其余人猜；第一个猜中即结算。"
-                    : "至少 3 人。一人出题、一人画，其余人猜；由出题者逐条裁定。"}
-                </p>
-                {roomForm.mode === "library" && (
-                  <details className="pack-picker">
-                    <summary>
-                      词包{" "}
-                      <span>
-                        {roomForm.packIds.length
-                          ? `已选 ${roomForm.packIds.length} 个`
-                          : "默认词包"}
-                      </span>
-                    </summary>
-                    <div>
-                      {packs.map((pack) => (
-                        <label key={pack.id}>
-                          <input
-                            type="checkbox"
-                            checked={roomForm.packIds.includes(pack.id)}
-                            disabled={
-                              roomForm.packIds.length >= 6 &&
-                              !roomForm.packIds.includes(pack.id)
-                            }
-                            onChange={() =>
-                              setRoomForm({
-                                ...roomForm,
-                                packIds: roomForm.packIds.includes(pack.id)
-                                  ? roomForm.packIds.filter(
-                                      (id) => id !== pack.id,
-                                    )
-                                  : [...roomForm.packIds, pack.id],
-                              })
-                            }
-                          />
-                          <span>
-                            <strong>{pack.name}</strong>
-                            <small>
-                              {pack.description} · {pack.wordCount} 词
-                            </small>
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </details>
-                )}
-                <button className="primary-button" disabled={disabled}>
-                  创建房间 →
-                </button>
-              </form>
-            </section>
-            <section className="room-wall" aria-label="大厅房间">
-              <form
-                className="join-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  mutate(() =>
-                    api.joinRoom(session.token, joinCode.trim().toUpperCase()),
-                  );
-                }}
-              >
-                <label className="sr-only" htmlFor="room-code">
-                  房间码
-                </label>
-                <input
-                  id="room-code"
-                  placeholder="输入 5 位房间码"
-                  maxLength={5}
-                  minLength={5}
-                  required
-                  value={joinCode}
-                  onChange={(event) =>
-                    setJoinCode(event.target.value.toUpperCase())
-                  }
-                />
-                <button disabled={disabled || joinCode.trim().length !== 5}>
-                  加入朋友
-                </button>
-              </form>
-              <div className="section-heading">
-                <h2>正在开放的画室</h2>
-                <span>{lobby.length} 间</span>
-              </div>
-              {!lobby.length && (
-                <div className="empty-lobby">
-                  <span aria-hidden="true">✳</span>
-                  <h3>第一笔，等你来画</h3>
-                  <p>创建房间，把房间码分享给朋友。</p>
-                </div>
-              )}
-              <div className="room-list">
-                {lobby.map((item) => (
-                  <article key={item.code} className="room-tile">
-                    <div>
-                      <span className="eyebrow">
-                        {modes[item.mode]} · {item.playerCount}/10 人
-                      </span>
-                      <h3>{item.name}</h3>
-                      <small>
-                        {item.code} ·{" "}
-                        {["active", "collecting-word"].includes(item.status)
-                          ? "正在游戏"
-                          : "等待新一轮"}
-                      </small>
-                    </div>
-                    <button
-                      disabled={disabled || item.playerCount >= 10}
-                      onClick={() =>
-                        mutate(() => api.joinRoom(session.token, item.code))
-                      }
-                    >
-                      {item.playerCount >= 10 ? "已满" : "进入 →"}
-                    </button>
-                  </article>
-                ))}
-              </div>
-            </section>
-          </div>
-          <footer className="lobby-footer">
-            <p>
-              每轮作画 100 秒 · 裁定局出题 30 秒 · 猜中 +2 分，画师和出题者各 +1
-              分
-            </p>
-            <button onClick={() => setDialog("admin")}>词包审核</button>
-          </footer>
-        </main>
-      )}
-      {session && dialog === "submit" && (
-        <PackSubmission
-          onClose={() => setDialog(null)}
-          onSubmit={async (payload) => {
-            applyResponse(
-              await api.createPack(session.token, payload),
-              session.token,
-            );
-            setDialog(null);
-            setNotice("投稿成功，审核通过后大家就可以选用这个词包了。");
-          }}
-        />
-      )}
-      {session && dialog === "admin" && (
-        <PackAdmin
-          token={session.token}
-          onClose={() => setDialog(null)}
-          onChanged={() =>
-            api
-              .bootstrap(session.token)
-              .then((payload) => applyResponse(payload, session.token))
-              .catch(() => {})
+        <Suspense
+          fallback={
+            <main className="page-loading" role="status">
+              正在打开大厅…
+            </main>
           }
-        />
+        >
+          <Lobby
+            roomForm={roomForm}
+            setRoomForm={setRoomForm}
+            joinCode={joinCode}
+            setJoinCode={setJoinCode}
+            packs={packs}
+            lobby={lobby}
+            disabled={disabled}
+            busy={busy}
+            onDialog={setDialog}
+            onCreate={() =>
+              mutate(() => api.createRoom(session.token, roomForm))
+            }
+            onJoin={(code) => mutate(() => api.joinRoom(session.token, code))}
+          />
+        </Suspense>
       )}
+      <Suspense
+        fallback={
+          <p className="feedback" role="status">
+            正在打开…
+          </p>
+        }
+      >
+        {session && dialog === "submit" && (
+          <PackSubmission
+            draft={packDraft}
+            onDraftChange={setPackDraft}
+            onClose={() => setDialog(null)}
+            onSubmit={async (payload) => {
+              applyResponse(
+                await api.createPack(session.token, payload),
+                session.token,
+              );
+              setDialog(null);
+              setPackDraft(emptyDraft);
+              toast.success("投稿成功，审核通过后大家就可以选用这个词包了。");
+            }}
+          />
+        )}
+        {session && dialog === "admin" && (
+          <PackAdmin
+            token={session.token}
+            onClose={() => setDialog(null)}
+            onChanged={() =>
+              api
+                .bootstrap(session.token)
+                .then((payload) => applyResponse(payload, session.token))
+                .catch(() => {})
+            }
+          />
+        )}
+      </Suspense>
+      <Toaster
+        position="top-center"
+        closeButton
+        containerAriaLabel="通知"
+          toastOptions={{ className: "ink-toast", closeButtonAriaLabel: "关闭通知" }}
+      />
     </div>
   );
 }

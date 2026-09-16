@@ -1,77 +1,157 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "../api.js";
 import { errorText } from "../errors.js";
-import { Dialog } from "./Dialog.jsx";
+import { Modal, ConfirmAction } from "./ui/overlay.jsx";
+import { Button } from "./ui/button.jsx";
+import { Field, Input, Textarea } from "./ui/field.jsx";
 
-export function PackSubmission({ onClose, onSubmit }) {
+export function parseWords(value) {
+  const items = value
+    .split(/[\n,，]/)
+    .map((word) => word.trim())
+    .filter(Boolean);
+  const seen = new Set();
+  const words = items.filter((word) => {
+    const key = word.toLowerCase().replace(/\s+/g, " ");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return { words, duplicates: items.length - words.length };
+}
+const validText = /^[\p{L}\p{N}\s_-]+$/u;
+export function PackSubmission({ draft, onDraftChange, onClose, onSubmit }) {
   const [error, setError] = useState("");
+  const [fields, setFields] = useState({});
   const [busy, setBusy] = useState(false);
+  const flight = useRef(false);
+  const { words, duplicates } = parseWords(draft.words);
+  const change = (key) => (event) => {
+    onDraftChange({ ...draft, [key]: event.target.value });
+    setFields((old) => ({ ...old, [key]: undefined }));
+  };
   return (
-    <Dialog title="投稿词包" onClose={onClose}>
-      <p>把适合画出来的词分享给大家，审核通过后会出现在词包列表。</p>
+    <Modal
+      title="投稿词包"
+      description="分享适合画出来的词，审核通过后，大家都能选用。"
+      onOpenChange={(open) => {
+        if (!open && !busy) onClose();
+      }}
+    >
       <form
         className="stack"
+        noValidate
         onSubmit={async (event) => {
           event.preventDefault();
-          const data = new FormData(event.currentTarget);
-          const words = [
-            ...new Set(
-              data
-                .get("words")
-                .split(/[\n,，]/)
-                .map((word) => word.trim())
-                .filter(Boolean),
-            ),
-          ];
+          if (flight.current) return;
+          const issues = {};
+          if (
+            !draft.name.trim() ||
+            draft.name.trim().length > 24 ||
+            !validText.test(draft.name.trim())
+          )
+            issues.name =
+              "填写 1–24 字名称，支持中英文、数字、空格、下划线和短横线。";
+          if (
+            draft.description.trim().length < 8 ||
+            draft.description.trim().length > 120
+          )
+            issues.description = "请用 8–120 字介绍这个词包。";
           if (
             words.length < 4 ||
             words.length > 32 ||
-            words.some((word) => word.length > 28)
+            words.some((word) => word.length > 28 || !validText.test(word))
           )
-            return setError("请填写 4–32 个不同词语，每词不超过 28 字。");
+            issues.words =
+              "请填写 4–32 个不同词语，每词 1–28 字，不含标点符号。";
+          setFields(issues);
+          if (Object.keys(issues).length) {
+            document.getElementById(`pack-${Object.keys(issues)[0]}`)?.focus();
+            return;
+          }
+          flight.current = true;
           setBusy(true);
           setError("");
           try {
             await onSubmit({
-              name: data.get("name").trim(),
-              description: data.get("description").trim(),
+              name: draft.name.trim(),
+              description: draft.description.trim(),
               words,
             });
           } catch (issue) {
             setError(errorText(issue));
           } finally {
+            flight.current = false;
             setBusy(false);
           }
         }}
       >
-        <label>
-          名称
-          <input name="name" required maxLength={24} />
-        </label>
-        <label>
-          介绍（8–120 字）
-          <textarea
-            name="description"
-            required
-            minLength={8}
-            maxLength={120}
-            rows={2}
-          />
-        </label>
-        <label>
-          词语（每行一个，也可用逗号分隔）
-          <textarea name="words" required rows={6} maxLength={1000} />
-        </label>
+        <Field id="pack-name" label="词包名称" error={fields.name}>
+          {(props) => (
+            <Input
+              {...props}
+              value={draft.name}
+              onChange={change("name")}
+              maxLength={24}
+              disabled={busy}
+              placeholder="例如：周末小食堂"
+            />
+          )}
+        </Field>
+        <Field
+          id="pack-description"
+          label="一句话介绍"
+          hint={`${draft.description.length}/120 字 · 至少 8 字`}
+          error={fields.description}
+        >
+          {(props) => (
+            <Textarea
+              {...props}
+              value={draft.description}
+              onChange={change("description")}
+              maxLength={120}
+              rows={2}
+              disabled={busy}
+              placeholder="这是一个什么主题的词包？"
+            />
+          )}
+        </Field>
+        <Field
+          id="pack-words"
+          label="收集一些词语"
+          hint={`${words.length}/32 个不同词语${duplicates ? ` · 已自动合并 ${duplicates} 个重复词` : ""} · 每行一个或逗号分隔`}
+          error={fields.words}
+        >
+          {(props) => (
+            <Textarea
+              {...props}
+              value={draft.words}
+              onChange={change("words")}
+              maxLength={1000}
+              rows={5}
+              disabled={busy}
+              placeholder={"咖啡\n牛角包\n煎蛋\n三明治"}
+            />
+          )}
+        </Field>
         {error && (
-          <p className="feedback-error" role="alert">
+          <p className="field-error" role="alert">
             {error}
           </p>
         )}
-        <button className="primary-button" disabled={busy}>
-          {busy ? "正在投稿…" : "提交审核"}
-        </button>
+        <p className="draft-note">
+          暂时关闭也没关系，草稿会保留到退出登录或刷新页面。
+        </p>
+        <footer className="ui-dialog-footer">
+          <Button variant="outline" onClick={onClose} disabled={busy}>
+            暂存并关闭
+          </Button>
+          <Button type="submit" pending={busy}>
+            提交审核
+          </Button>
+        </footer>
       </form>
-    </Dialog>
+    </Modal>
   );
 }
 
@@ -80,7 +160,10 @@ export function PackAdmin({ token, onClose, onChanged }) {
   const [packs, setPacks] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const flight = useRef(false);
   async function run(task) {
+    if (flight.current) return;
+    flight.current = true;
     setBusy(true);
     setError("");
     try {
@@ -90,11 +173,18 @@ export function PackAdmin({ token, onClose, onChanged }) {
     } catch (issue) {
       setError(errorText(issue));
     } finally {
+      flight.current = false;
       setBusy(false);
     }
   }
   return (
-    <Dialog title="词包审核" onClose={onClose}>
+    <Modal
+      title="词包审核"
+      description="审核适合大家一起画、一起猜的词语。"
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       <form
         className="stack"
         onSubmit={(event) => {
@@ -104,11 +194,12 @@ export function PackAdmin({ token, onClose, onChanged }) {
       >
         <label>
           审核密钥
-          <input
+          <Input
             type="password"
             autoComplete="off"
             required
             value={key}
+            disabled={busy}
             onChange={(event) => {
               setKey(event.target.value);
               setPacks(null);
@@ -116,7 +207,9 @@ export function PackAdmin({ token, onClose, onChanged }) {
           />
         </label>
         <small>密钥仅在本次弹窗中使用，关闭后清除。</small>
-        <button disabled={busy || !key}>读取待审核词包</button>
+        <Button type="submit" pending={busy} disabled={!key}>
+          读取待审核词包
+        </Button>
       </form>
       {error && (
         <p role="alert" className="feedback-error">
@@ -134,26 +227,31 @@ export function PackAdmin({ token, onClose, onChanged }) {
             <p>{pack.description}</p>
             <p className="pack-words">{pack.words.join(" · ")}</p>
             <div className="actions">
-              <button
+              <Button
                 disabled={busy}
                 onClick={() => run(() => api.approvePack(token, key, pack.id))}
               >
                 通过审核
-              </button>
-              <button
+              </Button>
+              <ConfirmAction
+                title={`拒绝「${pack.name}」？`}
+                description="这份投稿将被删除，无法恢复。"
+                confirmText="拒绝投稿"
                 disabled={busy}
-                onClick={() =>
+                onConfirm={() =>
                   run(async () => {
                     await api.deletePack(token, key, pack.id);
                     return api.adminPacks(token, key);
                   })
                 }
               >
-                拒绝投稿
-              </button>
+                <Button variant="ghost" disabled={busy}>
+                  拒绝投稿
+                </Button>
+              </ConfirmAction>
             </div>
           </article>
         ))}
-    </Dialog>
+    </Modal>
   );
 }
