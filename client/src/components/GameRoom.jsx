@@ -5,6 +5,8 @@ import { GuessFeed } from "./GuessFeed.jsx";
 import { Button } from "./ui/button.jsx";
 import { ConfirmAction } from "./ui/overlay.jsx";
 import { errorText } from "../errors.js";
+import { Copy, Check, Timer, Trophy, Users } from "lucide-react";
+import { PlayerStrip } from "./PlayerStrip.jsx";
 import { Input } from "./ui/field.jsx";
 
 export const modes = { library: "词库局", "host-judged": "裁定局" };
@@ -41,6 +43,12 @@ export function GameRoom({
   const [promptError, setPromptError] = useState("");
   const promptFlight = useRef(false);
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2200);
+    return () => clearTimeout(timer);
+  }, [copied]);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(timer);
@@ -93,24 +101,35 @@ export function GameRoom({
           </span>
           <h1>{room.name}</h1>
         </div>
-        <button
+        <Button
+          variant="outline"
           className="room-code"
           type="button"
           onClick={async () => {
             try {
               await navigator.clipboard.writeText(room.code);
               setCopied(true);
+              setCopyError(false);
             } catch {
               setCopied(false);
+              setCopyError(true);
             }
           }}
           aria-label={`复制房间码 ${room.code}`}
         >
-          {copied ? "已复制 " : "房间码 "}
+          {copied ? <Check /> : <Copy />} {copied ? "已复制 " : "房间码 "}
           <strong>{room.code}</strong>
-        </button>
+        </Button>
       </header>
-      <section className="round-bar" aria-label="回合状态">
+      {copyError && (
+        <p className="field-error" role="status">
+          复制失败，请手动复制房间码：{room.code}
+        </p>
+      )}
+      <section
+        className={`round-bar round-${round.status}`}
+        aria-label="回合状态"
+      >
         <div>
           <span className="eyebrow">
             第 {round.number} 轮 · {statuses[round.status]}
@@ -120,7 +139,11 @@ export function GameRoom({
               ? role
               : round.status === "finished"
                 ? reasons[round.reason] || "本轮结束"
-                : `还需 ${Math.max(0, minimum - room.players.length)} 人即可开局`}
+                : room.players.length < minimum
+                  ? `再来 ${minimum - room.players.length} 位朋友就能开局`
+                  : host
+                    ? "朋友到齐，随时开始"
+                    : "等房主开启这一轮"}
           </strong>
         </div>
         <div className="word-clue">
@@ -128,16 +151,28 @@ export function GameRoom({
             {round.word
               ? round.status === "finished"
                 ? "答案"
-                : "请画这个词"
+                : prompter
+                  ? "你出的词"
+                  : "请画这个词"
               : "线索"}
           </span>
           <strong>{round.word || round.maskedWord || "等一个灵感"}</strong>
         </div>
         <span
           className={`timer ${seconds !== null && seconds <= 15 ? "timer-urgent" : ""}`}
-          aria-label="剩余时间"
+          aria-label={seconds === null ? "尚未计时" : `剩余 ${seconds} 秒`}
         >
-          {seconds === null ? "—" : `${seconds}s`}
+          {seconds === null ? (
+            <Users size={20} />
+          ) : (
+            <>
+              <Timer size={17} />
+              <span>
+                {seconds}
+                <small>秒</small>
+              </span>
+            </>
+          )}
         </span>
         {host &&
           (running ? (
@@ -166,6 +201,24 @@ export function GameRoom({
           </p>
         )}
       </section>
+      {round.status === "finished" && (
+        <div className="round-result" role="status">
+          <Trophy size={19} />
+          <p>
+            <strong>
+              {Object.entries(round.scoreChanges || {})
+                .filter(([, score]) => score > 0)
+                .map(([id, score]) => `${id} +${score}`)
+                .join(" · ") || "这一轮没有得分，下一轮再试试"}
+            </strong>
+            <span>
+              {host
+                ? "准备好后，点击「再来一轮」。"
+                : "画作已留下，等房主开启下一轮。"}
+            </span>
+          </p>
+        </div>
+      )}
       <div className="play-layout">
         <CanvasBoard
           room={room}
@@ -255,36 +308,7 @@ export function GameRoom({
           )}
         </section>
       </div>
-      <details className="players-details">
-        <summary>
-          玩家与积分{" "}
-          <span>{room.players.length} 人 · 猜中 +2，画师 / 出题者 +1</span>
-        </summary>
-        <div className="player-list">
-          {room.players.map((player) => (
-            <div key={player.id} className="player-row">
-              <strong>
-                {player.id}
-                {player.id === me.id ? "（我）" : ""}
-              </strong>
-              <span>
-                {player.id === room.hostId ? "房主 " : ""}
-                {player.id === round.drawerId
-                  ? "画师"
-                  : player.id === round.prompterId
-                    ? "出题者"
-                    : ""}
-              </span>
-              <b>
-                {player.score} 分{" "}
-                {round.scoreChanges?.[player.id] > 0
-                  ? `(+${round.scoreChanges[player.id]})`
-                  : ""}
-              </b>
-            </div>
-          ))}
-        </div>
-      </details>
+      <PlayerStrip room={room} />
     </main>
   );
 }

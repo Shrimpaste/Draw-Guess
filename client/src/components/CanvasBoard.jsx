@@ -292,24 +292,41 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
           <span>INKMUSE CANVAS</span>
         </div>
       )}
-      <canvas
-        ref={canvasRef}
-        aria-label="绘画画布"
-        tabIndex={isDrawer ? 0 : undefined}
-        aria-busy={waitingForReset}
-        className={`board ${canDraw ? "board-drawable" : ""}`}
-        width={960 * pixelRatio}
-        height={620 * pixelRatio}
-        style={{
-          touchAction: isDrawer ? "none" : "pan-y",
-          aspectRatio: "960 / 620",
-        }}
-        onPointerDown={pointerDown}
-        onPointerMove={pointerMove}
-        onPointerUp={finish}
-        onPointerCancel={finish}
-        onLostPointerCapture={finish}
-      />
+      <div className="canvas-stage">
+        <canvas
+          ref={canvasRef}
+          aria-label="绘画画布"
+          tabIndex={isDrawer ? 0 : undefined}
+          aria-busy={waitingForReset}
+          className={`board ${canDraw ? "board-drawable" : ""}`}
+          width={960 * pixelRatio}
+          height={620 * pixelRatio}
+          style={{
+            touchAction: isDrawer ? "none" : "pan-y",
+            aspectRatio: "960 / 620",
+          }}
+          onPointerDown={pointerDown}
+          onPointerMove={pointerMove}
+          onPointerUp={finish}
+          onPointerCancel={finish}
+          onLostPointerCapture={finish}
+        />
+        {["waiting", "collecting-word"].includes(room.round.status) && (
+          <div className="canvas-placeholder" aria-hidden="true">
+            <span>✳</span>
+            <strong>
+              {room.round.status === "waiting"
+                ? "好画，从相聚开始"
+                : "给灵感一点时间"}
+            </strong>
+            <p>
+              {room.round.status === "waiting"
+                ? "邀请朋友加入，把第一笔留给你们。"
+                : "出题者正在想一个词，马上开始。"}
+            </p>
+          </div>
+        )}
+      </div>
       <p className="canvas-subtitle">
         {waitingForReset
           ? "正在同步画布，请稍候…"
