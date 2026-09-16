@@ -50,6 +50,10 @@ it.each(["撤销", "清空"])("waits for the %s snapshot before accepting anothe
   const props = { room: filledRoom, isDrawer: true, onStroke, onClear: command, onUndo: command };
   const view = render(<CanvasBoard {...props} />);
   fireEvent.click(screen.getByRole("button", { name: label }));
+  if (label === "清空") {
+    expect(command).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "清空画布" }));
+  }
   fireEvent.pointerDown(screen.getByLabelText("绘画画布"), { button: 0, clientX: 10, clientY: 10 });
   expect(command).toHaveBeenCalledOnce();
   expect(onStroke).not.toHaveBeenCalled();

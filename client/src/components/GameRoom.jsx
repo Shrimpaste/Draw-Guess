@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { CanvasBoard } from "./CanvasBoard.jsx";
+import { GuessComposer } from "./GuessComposer.jsx";
+import { GuessFeed } from "./GuessFeed.jsx";
+import { Button } from "./ui/button.jsx";
+import { ConfirmAction } from "./ui/overlay.jsx";
+import { errorText } from "../errors.js";
+import { Input } from "./ui/field.jsx";
 
 export const modes = { library: "词库局", "host-judged": "裁定局" };
 const statuses = {
@@ -15,70 +21,6 @@ const reasons = {
   "player-left": "玩家离开，本轮结束",
 };
 
-function GuessFeed({ room, canJudge, busy, onJudge }) {
-  const ref = useRef(null);
-  const pinned = useRef(true);
-  useEffect(() => {
-    if (pinned.current && ref.current)
-      ref.current.scrollTop = ref.current.scrollHeight;
-  }, [room.messages]);
-  return (
-    <div
-      className="guess-feed"
-      role="log"
-      aria-label="猜词记录"
-      ref={ref}
-      onScroll={() => {
-        const node = ref.current;
-        pinned.current =
-          node.scrollHeight - node.scrollTop - node.clientHeight < 48;
-      }}
-    >
-      {room.messages.map((message) => (
-        <div
-          className={`message message-${message.type} message-${message.status || "info"}`}
-          key={message.id}
-        >
-          {message.playerId && <strong>{message.playerId} </strong>}
-          <span>{message.text}</span>
-          {message.type === "guess" && (
-            <small>
-              {
-                {
-                  pending: "待裁定",
-                  rejected: "未猜中",
-                  accepted: "猜中了",
-                  closed: "已结束",
-                }[message.status]
-              }
-            </small>
-          )}
-          {canJudge && message.status === "pending" && (
-            <div className="judge-actions">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => onJudge(message.id, true)}
-                aria-label={`判定 ${message.playerId} 的 ${message.text} 正确`}
-              >
-                猜对了
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => onJudge(message.id, false)}
-                aria-label={`判定 ${message.playerId} 的 ${message.text} 错误`}
-              >
-                还不对
-              </button>
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export function GameRoom({
   room,
   connection,
@@ -91,20 +33,39 @@ export function GameRoom({
   onCanvas,
 }) {
   const [now, setNow] = useState(Date.now());
-  const [guess, setGuess] = useState("");
+  const [roundBusy, setRoundBusy] = useState(false);
+  const [roundError, setRoundError] = useState("");
+  const roundInFlight = useRef(false);
   const [prompt, setPrompt] = useState("");
+  const [promptBusy, setPromptBusy] = useState(false);
+  const [promptError, setPromptError] = useState("");
+  const promptFlight = useRef(false);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
-    setGuess("");
+    setRoundError("");
     setPrompt("");
   }, [room.round.id]);
   const { round, me } = room;
   const online = connection === "online";
   const disabled = busy || !online;
+  async function runRound(task) {
+    if (roundInFlight.current) return;
+    roundInFlight.current = true;
+    setRoundBusy(true);
+    setRoundError("");
+    try {
+      if ((await task()) === false) throw new Error("操作失败，请重试。");
+    } catch (error) {
+      setRoundError(errorText(error));
+    } finally {
+      roundInFlight.current = false;
+      setRoundBusy(false);
+    }
+  }
   const drawer = round.drawerId === me.id;
   const prompter = round.prompterId === me.id;
   const host = room.hostId === me.id;
@@ -178,15 +139,31 @@ export function GameRoom({
         >
           {seconds === null ? "—" : `${seconds}s`}
         </span>
-        {host && (
-          <button
-            className={running ? "ghost-button" : "primary-button"}
-            type="button"
-            disabled={disabled || (!running && room.players.length < minimum)}
-            onClick={running ? onSkip : onStart}
-          >
-            {running ? "结束本轮" : round.number ? "再来一轮" : "开始游戏"}
-          </button>
+        {host &&
+          (running ? (
+            <ConfirmAction
+              title="提前结束这一轮？"
+              description="本轮会结束并公布答案，不会计分。"
+              confirmText="结束本轮"
+              onConfirm={() => runRound(onSkip)}
+            >
+              <Button variant="ghost" disabled={disabled || roundBusy}>
+                结束本轮
+              </Button>
+            </ConfirmAction>
+          ) : (
+            <Button
+              disabled={disabled || room.players.length < minimum}
+              pending={roundBusy}
+              onClick={() => runRound(onStart)}
+            >
+              {round.number ? "再来一轮" : "开始游戏"}
+            </Button>
+          ))}
+        {roundError && (
+          <p className="field-error" role="alert">
+            {roundError}
+          </p>
         )}
       </section>
       <div className="play-layout">
@@ -213,70 +190,69 @@ export function GameRoom({
               className="prompt-form"
               onSubmit={async (event) => {
                 event.preventDefault();
-                if (await onPrompt(prompt.trim())) setPrompt("");
+                if (promptFlight.current || !prompt.trim()) return;
+                promptFlight.current = true;
+                setPromptBusy(true);
+                setPromptError("");
+                try {
+                  if ((await onPrompt(prompt.trim())) === false)
+                    throw new Error("出题失败，请重试。");
+                } catch (issue) {
+                  setPromptError(errorText(issue));
+                } finally {
+                  promptFlight.current = false;
+                  setPromptBusy(false);
+                }
               }}
             >
               <label>
                 本轮词语
-                <input
+                <Input
                   required
                   maxLength={28}
                   value={prompt}
+                  disabled={promptBusy}
                   onChange={(event) => setPrompt(event.target.value)}
                   placeholder="给画师一个灵感"
                 />
               </label>
-              <button
-                className="primary-button"
+              {promptError && (
+                <p role="alert" className="field-error">
+                  {promptError}
+                </p>
+              )}
+              <Button
+                type="submit"
+                pending={promptBusy}
                 disabled={disabled || !prompt.trim()}
               >
                 确认出题
-              </button>
+              </Button>
             </form>
           )}
           <GuessFeed
             room={room}
             canJudge={prompter && round.status === "active"}
-            busy={disabled}
+            disabled={disabled}
             onJudge={onJudge}
           />
-          <form
-            className="guess-form"
-            onSubmit={async (event) => {
-              event.preventDefault();
-              if (await onGuess(guess.trim())) setGuess("");
-            }}
-          >
-            <label className="sr-only" htmlFor="guess">
-              你的答案
-            </label>
-            <input
-              id="guess"
-              autoComplete="off"
-              maxLength={28}
-              required
-              disabled={disabled || !round.viewerIsGuesser}
-              value={guess}
-              onChange={(event) => setGuess(event.target.value)}
-              placeholder={
-                !online
-                  ? "连接恢复后继续"
-                  : round.viewerIsGuesser
-                    ? "这是……？"
-                    : round.status === "finished"
-                      ? "等房主开启下一轮"
-                      : drawer
-                        ? "你来画，大家来猜"
-                        : "等待本轮开始"
-              }
+          {round.viewerIsGuesser ? (
+            <GuessComposer
+              roundId={round.id}
+              online={online && !busy}
+              onGuess={onGuess}
             />
-            <button
-              className="primary-button"
-              disabled={disabled || !round.viewerIsGuesser || !guess.trim()}
-            >
-              发送
-            </button>
-          </form>
+          ) : (
+            <div className="role-hint">
+              {round.status === "finished"
+                ? "画作先留着，等下一次灵感。"
+                : drawer
+                  ? "你负责画，朋友们负责脑洞。"
+                  : prompter
+                    ? "观察大家的答案，及时给出裁定。"
+                    : "朋友到齐后，就可以开始了。"}
+            </div>
+          )}
         </section>
       </div>
       <details className="players-details">
