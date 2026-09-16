@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #fffdf9;
+  --color-foreground: #29221d;
+  --color-primary: #cb4829;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #eee7dd;
+  --color-secondary-foreground: #51473d;
+  --color-muted-foreground: #786d61;
+  --color-input: #ddd4c8;
+  --color-destructive: #b63930;
+  --color-ring: #be6545;
+}
+
+@layer components {
+  .ui-button { cursor: pointer; min-height: 0; border-style: solid; }
+  .ui-button:hover { transform: translateY(-1px); }
+  .ui-button:active { transform: translateY(0); }
+  .ui-button:focus-visible, .ui-input:focus-visible, .ui-toggle:focus-visible, .ui-radio-card:focus-visible, .ui-checkbox:focus-visible, .ui-slider-thumb:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 3px; }
+  .ui-input { color: var(--color-foreground); }
+  .ui-input[aria-invalid="true"] { border-color: var(--color-destructive); }
+  .ui-field { display: grid; gap: 8px; }
+  .ui-field > label { font-size: 13px; font-weight: 600; color: #51473d; }
+  .field-hint, .field-error { font-size: 12px; line-height: 1.6; }
+  .field-hint { color: var(--color-muted-foreground); }
+  .field-error { color: var(--color-destructive); }
+  .ui-overlay { position: fixed; inset: 0; z-index: 50; background: #211b174d; backdrop-filter: blur(3px); animation: veil-in 150ms ease-out; }
+  .ui-dialog { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 51; width: min(540px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); overflow-y: auto; background: #fffdf9; color: #29221d; border: 1px solid #e6ddd1; border-radius: 20px; padding: 28px; box-shadow: 0 24px 80px #211b1733; animation: panel-in 160ms ease-out; }
+  .ui-dialog-header { margin-bottom: 24px; padding-right: 28px; }
+  .ui-dialog-header h2 { font-size: 21px; line-height: 1.4; font-weight: 650; letter-spacing: -.03em; }
+  .ui-dialog-header p { margin-top: 8px; font-size: 13px; color: #786d61; line-height: 1.7; }
+  .dialog-close { position: absolute; right: 12px; top: 12px; }
+  .ui-dialog-footer { display: flex; gap: 8px; justify-content: flex-end; padding-top: 20px; margin-top: 20px; border-top: 1px solid #eee7dd; }
+  .ui-confirm { max-width: 420px; }
+  .ui-popover { z-index: 45; width: 250px; max-width: calc(100vw - 24px); padding: 18px; border-radius: 16px; border: 1px solid #e6ddd1; background: #fffdf9; color: #29221d; box-shadow: 0 10px 38px #33241520; transform-origin: var(--radix-popover-content-transform-origin); animation: veil-in 130ms ease-out; outline: none; }
+  .ui-tooltip { z-index: 60; padding: 7px 10px; border-radius: 7px; background: #332b24; color: #fffaf4; font-size: 12px; box-shadow: 0 3px 12px #211b1726; }
+  .ui-slider { position: relative; display: flex; align-items: center; width: 100%; height: 44px; touch-action: none; user-select: none; }
+  .ui-slider-track { position: relative; height: 5px; flex: 1; border-radius: 10px; background: #eee7dd; overflow: hidden; }
+  .ui-slider-range { position: absolute; height: 100%; background: #cb4829; }
+  .ui-slider-thumb { display: block; width: 20px; height: 20px; border: 1px solid #cdbfac; border-radius: 50%; background: #fffdf9; box-shadow: 0 2px 5px #33241520; }
+  .ui-radio-cards { display: flex; gap: 8px; }
+  .ui-radio-card { text-align: left; border: 1px solid #e3dbd0; background: #fffdf9; border-radius: 12px; padding: 14px; flex: 1; min-width: 0; }
+  .ui-radio-card[data-state="checked"] { border-color: #cb4829; background: #fcf0e9; box-shadow: 0 0 0 1px #cb482920; }
+  .radio-title { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; font-weight: 650; }
+  .radio-dot { display: grid; place-items: center; width: 16px; height: 16px; border: 1px solid #c4b7a5; border-radius: 50%; }
+  .radio-dot > span { width: 8px; height: 8px; border-radius: 50%; background: #cb4829; }
+  .radio-description { display: block; margin-top: 5px; font-size: 12px; font-weight: 400; color: #786d61; }
+  .ui-checkbox { min-height: 0; width: 20px; height: 20px; padding: 0; border-radius: 5px; display: inline-grid; place-items: center; border: 1px solid #cdbfac; background: #fffdf9; flex-shrink: 0; }
+  .ui-checkbox[data-state="checked"] { border-color: #cb4829; color: white; background: #cb4829; }
+  .ui-toggle-group { display: inline-flex; gap: 3px; padding: 3px; background: #efe9e0; border-radius: 10px; }
+  .ui-toggle { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 6px 10px; border: 0; border-radius: 7px; background: transparent; color: #786d61; font-size: 12px; }
+  .ui-toggle[data-state="on"] { background: #fffdf9; color: #a23922; box-shadow: 0 1px 4px #33241512; }
+  .ui-preview { max-width: 1000px; padding: 48px 24px; margin: auto; display: grid; gap: 24px; }
+  .preview-panel { padding: 28px; border: 1px solid #e3dbd0; border-radius: 20px; background: #fffaf4; display: grid; gap: 24px; }
+  .preview-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  @media (max-width: 740px), (pointer: coarse) { .ui-button, .ui-toggle { min-height: 44px; } .ui-button:has(>svg:only-child) { min-width: 44px; } .ui-dialog { padding: 24px; } .preview-tools .ui-toggle span { display: none; } .preview-panel { padding: 20px; } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+}
+@keyframes veil-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes panel-in { from { opacity: 0; translate: 0 5px; } to { opacity: 1; translate: 0 0; } }

@@ -34,3 +34,7 @@ Linux 安装兼容性修复：SQLite 依赖改为 13.0.3，清除 33 个旧传�
 - 完成 App / GameRoom / CanvasBoard / Dialog / PackDialogs / CSS 审阅；线上确认初始焦点、原生控件表现、投稿草稿关闭即丢。对比 shadcn Dialog 官方可交互示例，并核对 Radix、Base UI、Mantine、Tailwind 与 JavaScript 接入文档。
 - 交付 docs/UI-EXPERIENCE-PLAN.md：明确推荐方案、取舍、组件责任划分、CSS 迁移风险、五批实施与视觉 / 交互 / 真机验收。首批先做完整交互样板；本轮没有安装依赖或改业务代码，没有发布新版。
 - 文档人工审查：区分已复现问题、源码推断、真机待验证项；成本与包体预算写为估计 / 目标，未宣称实测。仅文档修改，执行 diff 检查，不重复运行业务测试。
+
+## UI 实施 A
+
+已接入 Tailwind 4 与按需 Radix / shadcn JSX 基础件，保留来源和 MIT 授权。旧样式置于 legacy 层，新增组件和工具类分层覆盖。开发专用 /__ui 提供慢请求和失败样板，生产构建不包含该页面。原 40 项测试、构建通过；新增弹窗初始焦点 / Escape 返回测试通过（共 41 项）。桌面 / 手机浏览器检查，修正无 Trigger 的受控弹窗焦点返回，并收紧手机预览工具条。当前生产主 JS 80.48 kB gzip，完整接入实际对局后继续测量。
