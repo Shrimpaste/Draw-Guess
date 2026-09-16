@@ -13,6 +13,7 @@ export function Lobby({
   lobby,
   disabled,
   busy,
+  pendingJoin,
   onCreate,
   onJoin,
   onDialog,
@@ -173,6 +174,7 @@ export function Lobby({
             <Button
               type="submit"
               variant="secondary"
+              pending={pendingJoin === `join:${joinCode.trim().toUpperCase()}`}
               disabled={disabled || joinCode.trim().length !== 5}
             >
               加入朋友
@@ -217,6 +219,7 @@ export function Lobby({
                 </div>
                 <Button
                   variant="outline"
+                  pending={pendingJoin === `join:${item.code}`}
                   disabled={disabled || item.playerCount >= 10}
                   onClick={() => onJoin(item.code)}
                 >

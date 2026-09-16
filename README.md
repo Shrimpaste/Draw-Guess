@@ -56,6 +56,16 @@ npm audit --registry=https://registry.npmjs.org
 
 CI 在 Node 24 / Ubuntu 上执行测试、构建、10 客户端验证和生产依赖审计。服务端 build 执行语法检查。
 
+## UI 开发与体验
+
+基础控件在 `client/src/components/ui/`，来源授权见该目录的 `NOTICE.md`。大厅、对局和词包弹窗按需加载。
+
+开发服务器下访问 `/__ui` 查看基础组件，访问 `/__game` 切换真实游戏组件的角色、回合、断线和慢请求状态。预览不连接实际比赛，生产构建不包含预览代码。
+
+画布聚焦时支持 B 画笔、E 橡皮、Ctrl / ⌘ Z 撤销。猜词使用 Enter 发送，中文组合输入期间不会发送；请求期间可继续输入。投稿弹窗关闭后保留当前页面草稿，刷新或退出会清除。
+
+[UI 方案](docs/UI-EXPERIENCE-PLAN.md) · [验收与限制](docs/UI-ACCEPTANCE.md)
+
 ## 结构与记录
 
 - `client/src/components/`：画布、对局、词包与对话框。

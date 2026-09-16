@@ -38,6 +38,8 @@ export function GameRoom({
   const [roundBusy, setRoundBusy] = useState(false);
   const [roundError, setRoundError] = useState("");
   const roundInFlight = useRef(false);
+  const currentRound = useRef(room.round.id);
+  currentRound.current = room.round.id;
   const [prompt, setPrompt] = useState("");
   const [promptBusy, setPromptBusy] = useState(false);
   const [promptError, setPromptError] = useState("");
@@ -55,23 +57,32 @@ export function GameRoom({
   }, []);
   useEffect(() => {
     setRoundError("");
+    setRoundBusy(false);
+    roundInFlight.current = false;
     setPrompt("");
+    setPromptError("");
+    setPromptBusy(false);
+    promptFlight.current = false;
   }, [room.round.id]);
   const { round, me } = room;
   const online = connection === "online";
   const disabled = busy || !online;
   async function runRound(task) {
     if (roundInFlight.current) return;
+    const submittedRound = room.round.id;
     roundInFlight.current = true;
     setRoundBusy(true);
     setRoundError("");
     try {
       if ((await task()) === false) throw new Error("操作失败，请重试。");
     } catch (error) {
-      setRoundError(errorText(error));
+      if (currentRound.current === submittedRound)
+        setRoundError(errorText(error));
     } finally {
-      roundInFlight.current = false;
-      setRoundBusy(false);
+      if (currentRound.current === submittedRound) {
+        roundInFlight.current = false;
+        setRoundBusy(false);
+      }
     }
   }
   const drawer = round.drawerId === me.id;
@@ -244,6 +255,7 @@ export function GameRoom({
               onSubmit={async (event) => {
                 event.preventDefault();
                 if (promptFlight.current || !prompt.trim()) return;
+                const submittedRound = room.round.id;
                 promptFlight.current = true;
                 setPromptBusy(true);
                 setPromptError("");
@@ -251,10 +263,13 @@ export function GameRoom({
                   if ((await onPrompt(prompt.trim())) === false)
                     throw new Error("出题失败，请重试。");
                 } catch (issue) {
-                  setPromptError(errorText(issue));
+                  if (currentRound.current === submittedRound)
+                    setPromptError(errorText(issue));
                 } finally {
-                  promptFlight.current = false;
-                  setPromptBusy(false);
+                  if (currentRound.current === submittedRound) {
+                    promptFlight.current = false;
+                    setPromptBusy(false);
+                  }
                 }
               }}
             >

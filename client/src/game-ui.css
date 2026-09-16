@@ -1,15 +1,35 @@
 @layer components {
-  @media (min-width: 1000px) and (max-height: 800px) {
+  .preview-switcher {
+    max-width: 1000px;
+    padding: 16px;
+    margin: auto;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    border-bottom: 1px dashed #c4b7a5;
+    font-size: 12px;
+  }
+  .preview-switcher .ui-radio-card {
+    padding: 8px 12px;
+  }
+  .preview-switcher label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  @media (min-width: 1000px) {
     .app-shell.in-room {
-      max-width: min(1200px, calc((100dvh - 390px) * 1.5484 + 360px));
+      max-width: min(1200px, max(860px, calc((100dvh - 390px) * 1.5484 + 360px)));
     }
-    .watching-label {
+    .game-room .watching-label {
       height: 48px;
     }
     .room-heading {
       padding: 12px 0;
     }
-    .players-strip {
+    .game-room .players-strip {
       margin-top: 14px;
     }
   }
@@ -465,15 +485,15 @@
       display: none;
     }
     .drawing-toolbar .ui-toggle {
-      width: 40px;
+      width: 44px;
       padding: 6px;
     }
     .drawing-toolbar .tool-separator {
       margin: 0 2px;
     }
     .drawing-toolbar .ui-button {
-      width: 40px;
-      min-width: 40px;
+      width: 44px;
+      min-width: 44px;
     }
     .watching-label {
       height: 40px;
