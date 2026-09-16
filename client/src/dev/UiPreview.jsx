@@ -2,8 +2,9 @@ import { useState } from "react";
 import { Pencil, Eraser, Undo2 } from "lucide-react";
 import { Button } from "../components/ui/button.jsx";
 import { Field, Input } from "../components/ui/field.jsx";
-import { Modal, Popover } from "../components/ui/overlay.jsx";
-import { Slider, ToggleGroup } from "../components/ui/selection.jsx";
+import { Modal } from "../components/ui/overlay.jsx";
+import { Popover } from "../components/ui/tool-overlays.jsx";
+import { Slider, ToggleGroup } from "../components/ui/tool-selection.jsx";
 
 export default function UiPreview() {
   const [tool, setTool] = useState("pen"), [width, setWidth] = useState(5), [open, setOpen] = useState(false);

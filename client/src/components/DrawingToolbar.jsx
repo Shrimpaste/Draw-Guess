@@ -1,3 +1,4 @@
+import { ConfirmAction } from "./ui/overlay.jsx";
 import {
   Check,
   Circle,
@@ -8,13 +9,8 @@ import {
   Undo2,
 } from "lucide-react";
 import { Button } from "./ui/button.jsx";
-import {
-  ConfirmAction,
-  Popover,
-  Tooltip,
-  TooltipProvider,
-} from "./ui/overlay.jsx";
-import { Slider, ToggleGroup } from "./ui/selection.jsx";
+import { Popover, Tooltip, TooltipProvider } from "./ui/tool-overlays.jsx";
+import { Slider, ToggleGroup } from "./ui/tool-selection.jsx";
 
 export const palette = [
   ["#16110f", "墨黑"],

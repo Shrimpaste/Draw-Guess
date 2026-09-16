@@ -1,9 +1,17 @@
 @layer components {
   @media (min-width: 1000px) and (max-height: 800px) {
-    .app-shell.in-room { max-width: min(1200px, calc((100dvh - 390px) * 1.5484 + 360px)); }
-    .watching-label { height: 48px; }
-    .room-heading { padding: 12px 0; }
-    .players-strip { margin-top: 14px; }
+    .app-shell.in-room {
+      max-width: min(1200px, calc((100dvh - 390px) * 1.5484 + 360px));
+    }
+    .watching-label {
+      height: 48px;
+    }
+    .room-heading {
+      padding: 12px 0;
+    }
+    .players-strip {
+      margin-top: 14px;
+    }
   }
   .room-code.ui-button {
     border: 1px solid #e0d5c7;
