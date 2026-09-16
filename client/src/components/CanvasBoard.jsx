@@ -33,6 +33,9 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
   const activeRef = useRef(null);
   const timerRef = useRef(null);
   const frameRef = useRef(null);
+  const resetPendingRef = useRef(false);
+  const [waitingForReset, setWaitingForReset] = useState(false);
+  const canDraw = isDrawer && !waitingForReset;
   const latest = useRef({ room, isDrawer, onStroke });
   latest.current = { room, isDrawer, onStroke };
   const [tool, setTool] = useState({ color: palette[0], width: 5, tool: "pen" });
@@ -63,6 +66,8 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
   }
   useEffect(() => {
     discardLocal();
+    resetPendingRef.current = false;
+    setWaitingForReset(false);
     renderedRef.current = [];
     if (bufferRef.current) bufferRef.current.getContext("2d").clearRect(0, 0, 960, 620);
     requestPaint();
@@ -114,7 +119,7 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
     }
   }
   function pointerDown(event) {
-    if (!isDrawer || event.button !== 0 || activeRef.current) return;
+    if (!isDrawer || resetPendingRef.current || event.button !== 0 || activeRef.current) return;
     event.preventDefault();
     canvasRef.current.setPointerCapture?.(event.pointerId);
     const stroke = { ...tool, id: crypto.randomUUID(), points: [point(event)], sent: 0, pointerId: event.pointerId };
@@ -141,6 +146,17 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
     if (canvasRef.current.hasPointerCapture?.(stroke.pointerId)) canvasRef.current.releasePointerCapture(stroke.pointerId);
     requestPaint();
   }
+  function resetCanvas(command) {
+    if (!isDrawer || resetPendingRef.current) return;
+    finish();
+    // New strokes must use the epoch returned by the authoritative snapshot.
+    resetPendingRef.current = true;
+    setWaitingForReset(true);
+    if (!command()) {
+      resetPendingRef.current = false;
+      setWaitingForReset(false);
+    }
+  }
 
   return (
     <section className="surface-panel canvas-shell" aria-label="画布与工具">
@@ -150,11 +166,11 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
         </div>
         <label className="brush-meter">线宽 <input type="range" min="2" max="24" value={tool.width} disabled={!isDrawer} onChange={(event) => setTool((old) => ({ ...old, width: Number(event.target.value) }))} />{tool.width}</label>
         <button className="ghost-button" type="button" disabled={!isDrawer} aria-pressed={tool.tool === "eraser"} onClick={() => setTool((old) => ({ ...old, tool: old.tool === "eraser" ? "pen" : "eraser" }))}>橡皮</button>
-        <button className="ghost-button" type="button" disabled={!isDrawer || !room.canvas.length} onClick={() => { finish(); onUndo(); }}>撤销</button>
-        <button className="ghost-button" type="button" disabled={!isDrawer || !room.canvas.length} onClick={() => { finish(); onClear(); }}>清空</button>
+        <button className="ghost-button" type="button" disabled={!canDraw || !room.canvas.length} onClick={() => resetCanvas(onUndo)}>撤销</button>
+        <button className="ghost-button" type="button" disabled={!canDraw || !room.canvas.length} onClick={() => resetCanvas(onClear)}>清空</button>
       </div>
-      <canvas ref={canvasRef} aria-label="绘画画布" className={`board ${isDrawer ? "board-drawable" : ""}`} width={960 * pixelRatio} height={620 * pixelRatio} style={{ touchAction: isDrawer ? "none" : "pan-y", aspectRatio: "960 / 620" }} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish} />
-      <p className="canvas-subtitle">{isDrawer ? "轮到你画了 · 画笔实时同步，支持触摸绘制" : room.round.status === "finished" ? "本轮画作 · 下一轮开始前会一直保留" : "看画面，猜一个词"}</p>
+      <canvas ref={canvasRef} aria-label="绘画画布" aria-busy={waitingForReset} className={`board ${canDraw ? "board-drawable" : ""}`} width={960 * pixelRatio} height={620 * pixelRatio} style={{ touchAction: isDrawer ? "none" : "pan-y", aspectRatio: "960 / 620" }} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish} />
+      <p className="canvas-subtitle">{waitingForReset ? "正在同步画布，请稍候…" : isDrawer ? "轮到你画了 · 画笔实时同步，支持触摸绘制" : room.round.status === "finished" ? "本轮画作 · 下一轮开始前会一直保留" : "看画面，猜一个词"}</p>
     </section>
   );
 }

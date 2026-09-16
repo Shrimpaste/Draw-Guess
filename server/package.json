@@ -7,20 +7,20 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
-    "build": "node -e \"console.log('server build skipped')\"",
+    "build": "node ../scripts/check-server.mjs",
     "test": "vitest run"
   },
   "dependencies": {
-    "better-sqlite3": "^11.10.0",
+    "better-sqlite3": "^13.0.3",
     "cors": "^2.8.5",
-    "express": "^4.21.2",
+    "express": "^4.22.3",
     "helmet": "^8.1.0",
-    "nanoid": "^5.1.5",
-    "ws": "^8.18.2",
+    "nanoid": "^5.1.16",
+    "ws": "^8.21.3",
     "zod": "^3.24.2"
   },
   "devDependencies": {
     "supertest": "^7.1.0",
-    "vitest": "^3.1.1"
+    "vitest": "^4.1.11"
   }
 }

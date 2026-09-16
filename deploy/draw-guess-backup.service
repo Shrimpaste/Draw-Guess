@@ -1,0 +1,17 @@
+[Unit]
+Description=Back up InkMuse word packs
+After=draw-guess.service
+
+[Service]
+Type=oneshot
+User=draw-guess
+Group=draw-guess
+WorkingDirectory=/srv/draw-guess/current
+EnvironmentFile=/etc/draw-guess.env
+ExecStart=/bin/sh -c 'exec /opt/draw-guess/bin/node server/src/backup.js /var/lib/draw-guess/backups/$(date -u +%%Y%%m%%dT%%H%%M%%SZ).db'
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/draw-guess

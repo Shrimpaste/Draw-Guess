@@ -1,0 +1,30 @@
+# SITE_ADDRESS can be a public IPv4 address or a DNS hostname.
+# For IP certificates use Caddy >= 2.11.4 with the shortlived ACME profile.
+{
+  admin localhost:2020
+  default_sni {$SITE_ADDRESS}
+}
+{$SITE_ADDRESS} {
+  tls {
+    issuer acme {
+      dir https://acme-v02.api.letsencrypt.org/directory
+      profile shortlived
+    }
+  }
+  encode zstd gzip
+  @backend path /api/* /ws
+  handle @backend {
+    reverse_proxy 127.0.0.1:3001
+  }
+  handle {
+    root * /srv/draw-guess/current/client/dist
+    header {
+      X-Content-Type-Options nosniff
+      Referrer-Policy no-referrer
+      X-Frame-Options DENY
+      Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'"
+    }
+    try_files {path} /index.html
+    file_server
+  }
+}

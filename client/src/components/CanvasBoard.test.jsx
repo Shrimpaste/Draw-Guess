@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CanvasBoard, drawStroke } from "./CanvasBoard.jsx";
 const context = Object.fromEntries(["save", "restore", "beginPath", "arc", "fill", "moveTo", "lineTo", "stroke", "clearRect", "drawImage", "scale", "setTransform"].map((name) => [name, vi.fn()]));
@@ -9,7 +9,7 @@ beforeEach(() => {
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context);
   vi.spyOn(HTMLCanvasElement.prototype, "getBoundingClientRect").mockReturnValue({ left: 0, top: 0, width: 960, height: 620 });
 });
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 it("sends a dot immediately and streams moved points before pointer-up", () => {
   const onStroke = vi.fn(() => true);
   const view = render(<CanvasBoard room={room} isDrawer onStroke={onStroke} onClear={vi.fn()} onUndo={vi.fn()} />);
@@ -42,4 +42,34 @@ it("renders taps as circles and uses compositing for the eraser", () => {
   drawStroke(context, { tool: "eraser", color: "#000000", width: 8, points: [{ x: 10, y: 20 }] });
   expect(context.globalCompositeOperation).toBe("destination-out");
   expect(context.arc).toHaveBeenCalledWith(10, 20, 4, 0, Math.PI * 2);
+});
+it.each(["撤销", "清空"])("waits for the %s snapshot before accepting another stroke", (label) => {
+  const onStroke = vi.fn(() => true);
+  const command = vi.fn(() => true);
+  const filledRoom = { ...room, canvas: [{ id: "old", tool: "pen", color: "#16110f", width: 5, points: [{ x: 1, y: 1 }] }] };
+  const props = { room: filledRoom, isDrawer: true, onStroke, onClear: command, onUndo: command };
+  const view = render(<CanvasBoard {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: label }));
+  fireEvent.pointerDown(screen.getByLabelText("绘画画布"), { button: 0, clientX: 10, clientY: 10 });
+  expect(command).toHaveBeenCalledOnce();
+  expect(onStroke).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: label })).toBeDisabled();
+  expect(screen.getByText("正在同步画布，请稍候…")).toBeInTheDocument();
+  view.rerender(<CanvasBoard {...props} room={{ ...room, canvasEpoch: 2 }} />);
+  fireEvent.pointerDown(screen.getByLabelText("绘画画布"), { button: 0, clientX: 10, clientY: 10 });
+  expect(onStroke).toHaveBeenCalledOnce();
+});
+it("releases the canvas when a reset cannot be sent or the server rolls it back", () => {
+  const onStroke = vi.fn(() => true);
+  const onUndo = vi.fn(() => false);
+  const filledRoom = { ...room, canvas: [{ id: "old", tool: "pen", color: "#16110f", width: 5, points: [{ x: 1, y: 1 }] }] };
+  const props = { room: filledRoom, isDrawer: true, onStroke, onClear: vi.fn(), onUndo };
+  const view = render(<CanvasBoard {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: "撤销" }));
+  expect(screen.getByRole("button", { name: "撤销" })).toBeEnabled();
+  onUndo.mockReturnValue(true);
+  fireEvent.click(screen.getByRole("button", { name: "撤销" }));
+  view.rerender(<CanvasBoard {...props} room={{ ...filledRoom, canvasResetKey: 1 }} />);
+  fireEvent.pointerDown(screen.getByLabelText("绘画画布"), { button: 0, clientX: 10, clientY: 10 });
+  expect(onStroke).toHaveBeenCalledOnce();
 });
