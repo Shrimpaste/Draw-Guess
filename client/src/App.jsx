@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useGameConnection } from "./hooks/useGameConnection.js";
 import { api } from "./api.js";
 import { errorText } from "./errors.js";
+import { Button } from "./components/ui/button.jsx";
+import { ConfirmAction } from "./components/ui/overlay.jsx";
 import { GameRoom, modes } from "./components/GameRoom.jsx";
 import { PackAdmin, PackSubmission } from "./components/PackDialogs.jsx";
 
@@ -59,6 +61,10 @@ export default function App() {
     setError("");
     setNotice("");
   }, [room?.code]);
+  async function gameAction(task) {
+    applyResponse(await task(), session?.token);
+    return true;
+  }
   async function mutate(task) {
     setBusy(true);
     setError("");
@@ -91,20 +97,34 @@ export default function App() {
               {connectionLabels[connection]}
             </span>
             <span className="identity">{player?.id || session.id}</span>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() =>
-                room
-                  ? mutate(() => api.leaveRoom(session.token))
-                  : mutate(async () => {
-                      await api.deleteSession(session.token);
-                      setSession(null);
-                    })
-              }
-            >
-              {room ? "返回大厅" : "退出"}
-            </button>
+            {room &&
+            ["active", "collecting-word"].includes(room.round.status) ? (
+              <ConfirmAction
+                title="离开正在进行的对局？"
+                description="如果你是画师或出题者，本轮会随之结束。"
+                confirmText="离开房间"
+                onConfirm={() => mutate(() => api.leaveRoom(session.token))}
+              >
+                <Button variant="outline" disabled={busy}>
+                  返回大厅
+                </Button>
+              </ConfirmAction>
+            ) : (
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() =>
+                  room
+                    ? mutate(() => api.leaveRoom(session.token))
+                    : mutate(async () => {
+                        await api.deleteSession(session.token);
+                        setSession(null);
+                      })
+                }
+              >
+                {room ? "返回大厅" : "退出"}
+              </Button>
+            )}
           </div>
         )}
       </header>
@@ -204,25 +224,27 @@ export default function App() {
           connection={connection}
           busy={busy}
           onStart={() =>
-            mutate(() =>
+            gameAction(() =>
               api.startRound(session.token, room.code, room.round.id),
             )
           }
           onSkip={() =>
-            mutate(() => api.skipRound(session.token, room.code, room.round.id))
+            gameAction(() =>
+              api.skipRound(session.token, room.code, room.round.id),
+            )
           }
           onGuess={(guess) =>
-            mutate(() =>
+            gameAction(() =>
               api.submitGuess(session.token, room.code, guess, room.round.id),
             )
           }
           onPrompt={(word) =>
-            mutate(() =>
+            gameAction(() =>
               api.submitPrompt(session.token, room.code, word, room.round.id),
             )
           }
           onJudge={(id, accepted) =>
-            mutate(() =>
+            gameAction(() =>
               api.judgeGuess(
                 session.token,
                 room.code,

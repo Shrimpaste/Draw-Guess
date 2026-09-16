@@ -44,7 +44,8 @@ it("keeps failed guesses for retry and disables submission during reconnect", as
     expect(screen.getByLabelText("你的答案")).toHaveValue(""),
   );
   view.rerender(<GameRoom {...props} connection="reconnecting" />);
-  expect(screen.getByLabelText("你的答案")).toBeDisabled();
+  expect(screen.getByLabelText("你的答案")).toBeEnabled();
+  expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
 });
 it("judges the selected pending guess by id and exposes round results", () => {
   const onJudge = vi.fn();

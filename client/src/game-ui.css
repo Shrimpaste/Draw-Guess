@@ -1,0 +1,235 @@
+@layer components {
+  .drawing-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px;
+    margin-bottom: 10px;
+    background: #faf6ef;
+    border: 1px solid #e6ddd1;
+    border-radius: 14px;
+  }
+  .tool-separator {
+    height: 22px;
+    width: 1px;
+    background: #ddd4c8;
+    margin: 0 4px;
+  }
+  .tool-spacer {
+    flex: 1;
+  }
+  .active-color {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    box-shadow:
+      0 0 0 3px #fffdf9,
+      0 0 0 4px #ddd4c8;
+  }
+  .popover-heading {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .popover-heading > span {
+    color: #786d61;
+    font-weight: 400;
+  }
+  .color-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-top: 14px;
+  }
+  .color-choice {
+    border: 1px solid transparent;
+    padding: 6px;
+    border-radius: 10px;
+    background: transparent;
+    display: grid;
+    place-items: center;
+    min-height: 44px;
+  }
+  .color-choice[aria-pressed="true"] {
+    border-color: #d3b8a8;
+    background: #f4ebe2;
+  }
+  .color-choice > span {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+  }
+  .width-trigger {
+    gap: 3px;
+    font-size: 11px;
+  }
+  .brush-preview {
+    height: 44px;
+    display: grid;
+    place-items: center;
+    margin-top: 12px;
+    background: #f4efe7;
+    border-radius: 10px;
+  }
+  .brush-preview > span {
+    border-radius: 50%;
+  }
+  .brush-presets {
+    display: flex;
+    justify-content: space-between;
+  }
+  .watching-label {
+    height: 69px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: #786d61;
+    font-size: 12px;
+  }
+  .watching-label > span {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+  }
+  .board {
+    border-radius: 14px;
+    border-color: #ded3c5;
+    box-shadow: 0 5px 20px #432b1208;
+  }
+  .board:focus-visible {
+    outline: 2px solid #be6545;
+    outline-offset: 3px;
+  }
+  .guess-panel {
+    border-radius: 16px;
+    background: #fffdf9;
+  }
+  .feed-wrap {
+    position: relative;
+    flex: 1 1 0;
+    min-height: 130px;
+    display: flex;
+  }
+  .guess-feed {
+    width: 100%;
+    min-height: 0;
+    scrollbar-width: thin;
+    scrollbar-color: #d2c5b5 transparent;
+  }
+  .message-guess {
+    padding: 10px 12px;
+    margin: 6px 0;
+    border-radius: 10px;
+    background: #f5f0e9;
+  }
+  .message-guess > strong {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: #786d61;
+    margin-bottom: 3px;
+  }
+  .message-mine {
+    background: #fbede5;
+  }
+  .message-accepted {
+    background: #edf5eb;
+    color: #296046;
+  }
+  .new-messages {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    box-shadow: 0 2px 12px #33241520;
+  }
+  .new-messages:hover {
+    transform: translateX(-50%);
+  }
+  .composer-shell {
+    padding: 12px;
+    border-top: 1px solid #eee7dd;
+  }
+  .guess-composer {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .guess-composer > input {
+    flex: 1;
+    min-width: 0;
+  }
+  .guess-composer > button {
+    flex-shrink: 0;
+  }
+  .composer-hint {
+    margin: 8px 2px 0;
+    color: #786d61;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .composer-error {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    color: #b63930;
+    font-size: 12px;
+  }
+  .composer-error > span {
+    flex: 1;
+    overflow-wrap: anywhere;
+  }
+  .composer-error small {
+    display: block;
+  }
+  .role-hint {
+    padding: 16px;
+    font-size: 12px;
+    color: #786d61;
+    border-top: 1px solid #eee7dd;
+  }
+  .feedback {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 70;
+    width: min(500px, calc(100vw - 32px));
+    box-shadow: 0 8px 32px #33241520;
+    border-radius: 12px;
+  }
+  @media (max-width: 740px) {
+    .drawing-toolbar {
+      gap: 2px;
+      padding: 5px;
+    }
+    .drawing-toolbar .ui-toggle span {
+      display: none;
+    }
+    .drawing-toolbar .ui-toggle {
+      width: 40px;
+      padding: 6px;
+    }
+    .drawing-toolbar .tool-separator {
+      margin: 0 2px;
+    }
+    .drawing-toolbar .ui-button {
+      width: 40px;
+      min-width: 40px;
+    }
+    .watching-label {
+      height: 40px;
+    }
+    .feed-wrap {
+      flex-basis: 220px;
+      max-height: 300px;
+    }
+    .guess-composer .ui-input {
+      font-size: 16px;
+    }
+  }
+}
