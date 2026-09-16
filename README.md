@@ -2,6 +2,8 @@
 
 给 2–10 位朋友的小画室。React + Express + WebSocket，单进程运行；SQLite 保存词包，房间与临时身份保存在内存中。
 
+试玩入口：[https://170.106.190.20](https://170.106.190.20)（无需域名，可信 HTTPS）。
+
 ## 本地运行
 
 使用 Node.js 24 LTS；根目录是 npm workspace。
@@ -62,4 +64,4 @@ CI 在 Node 24 / Ubuntu 上执行测试、构建、10 客户端验证和生产�
 - `server/src/createApp.js` / `realtime.js`：HTTP / WebSocket 边界。
 - [原始审阅](REVIEW-2026-09-15.md) · [分批审查](docs/CHANGE_REVIEW.md) · [计划](task_plan.md)。
 
-![桌面对局](docs/screenshots/room-desktop.png)
+![公网桌面对局](docs/screenshots/public-desktop.png)
