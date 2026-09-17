@@ -22,8 +22,8 @@ afterEach(async () => {
 async function player(id) {
   return (await request(app).post("/api/session").send({ preferredId: id })).body.player;
 }
-async function connect(user) {
-  const socket = new WebSocket(`ws://127.0.0.1:${port}/ws?token=${user.token}`);
+async function connect(user, compact = false) {
+  const socket = new WebSocket(`ws://127.0.0.1:${port}/ws?token=${user.token}${compact ? "&compact=1" : ""}`);
   socket.messages = [];
   socket.on("message", (raw) => socket.messages.push(JSON.parse(String(raw))));
   await once(socket, "open");
@@ -99,4 +99,33 @@ it("rejects foreign origins and sessions unknown to a restarted app", async () =
   const response = await new Promise((resolve) => socket.on("unexpected-response", (_, response) => { resolve(response.statusCode); response.destroy(); }));
   socket.on("error", () => {}); socket.terminate();
   expect(response).toBe(403);
+});
+
+it("omits only already delivered canvases for compact sockets and restores full state on reconnect", async () => {
+  const artist = await player("CompactArtist"), viewer = await player("CompactViewer");
+  const room = store.createRoom({ playerId: artist.id, name: "compact", mode: "library" });
+  store.joinRoom(viewer.id, room.code); store.startRound(artist.id, room.code, room.round.id);
+  room.round.drawerId = artist.id;
+  const a = await connect(artist, true), b = await connect(viewer, true), legacy = await connect(viewer);
+  expect((await message(b, (m) => m.room?.code === room.code)).room.canvas).toEqual([]);
+  const packet = { type: "canvas:stroke", roundId: room.round.id, epoch: room.canvasEpoch, stroke: { id: "ink", offset: 0, tool: "pen", width: 4, color: "#000000", points: [{ x: 1, y: 1 }] } };
+  a.send(JSON.stringify(packet));
+  await message(b, (m) => m.type === "canvas:stroke");
+  b.messages = []; legacy.messages = [];
+  const response = await request(app).post("/api/rounds/guess?compact=1").set("Authorization", `Bearer ${viewer.token}`).send({ roomCode: room.code, roundId: room.round.id, guess: "肯定不是答案的测试词" });
+  expect(response.status).toBe(204);
+  const update = await message(b, (m) => m.room?.messages.some((v) => v.type === "guess"));
+  expect(update.room).not.toHaveProperty("canvas");
+  expect(update.room.canvasVersion).toBe(room.canvasVersion);
+  expect((await message(legacy, (m) => m.room?.messages.some((v) => v.type === "guess"))).room.canvas[0].points).toHaveLength(1);
+  a.send(JSON.stringify({ ...packet, stroke: { ...packet.stroke, offset: 1, points: [{ x: 2, y: 2 }] } }));
+  await message(b, (m) => m.type === "canvas:stroke" && m.stroke.offset === 1);
+  b.close(); await once(b, "close");
+  const restored = await connect(viewer, true);
+  expect((await message(restored, (m) => m.room?.code === room.code)).room.canvas[0].points).toHaveLength(2);
+  restored.messages = [];
+  await request(app).post("/api/rounds/skip?compact=1").set("Authorization", `Bearer ${artist.token}`).send({ roomCode: room.code, roundId: room.round.id }).expect(204);
+  expect((await message(restored, (m) => m.room?.round.status === "finished")).room).not.toHaveProperty("canvas");
+  await request(app).post("/api/rounds/start?compact=1").set("Authorization", `Bearer ${artist.token}`).send({ roomCode: room.code, roundId: room.round.id }).expect(204);
+  expect((await message(restored, (m) => m.room?.round.status === "active")).room.canvas).toEqual([]);
 });

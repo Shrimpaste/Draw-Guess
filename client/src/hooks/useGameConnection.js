@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
-import { applyCanvasEvent } from "../canvasState.js";
+import { applyCanvasEvent, applyRoomUpdate } from "../canvasState.js";
 
 const emptyState = { player: null, room: null, lobby: [], packs: [], modeDescriptions: [], revision: -1 };
 
@@ -30,7 +30,8 @@ export function useGameConnection(token, onExpired) {
         if (payload[key] !== undefined) next[key] = payload[key];
       }
       if (Object.hasOwn(payload, "room") && (payload.revision ?? 0) >= previous.revision) {
-        next.room = payload.room ? { ...payload.room, canvasResetKey: previous.room?.code === payload.room.code ? previous.room.canvasResetKey || 0 : 0 } : null;
+        try { next.room = applyRoomUpdate(previous.room, payload.room); }
+        catch { return { ...previous, desynced: true }; }
         next.desynced = false;
         next.revision = payload.revision ?? 0;
       }
@@ -76,7 +77,7 @@ export function useGameConnection(token, onExpired) {
         return;
       }
       const protocol = location.protocol === "https:" ? "wss" : "ws";
-      socket = new WebSocket(`${protocol}://${location.host}/ws?token=${encodeURIComponent(token)}`);
+      socket = new WebSocket(`${protocol}://${location.host}/ws?token=${encodeURIComponent(token)}&compact=1`);
       socketRef.current = socket;
       socket.onopen = () => {
         if (stopped) return socket.close();

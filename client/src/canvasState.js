@@ -1,3 +1,12 @@
+export function applyRoomUpdate(previous, room) {
+  if (!room) return null;
+  if (!Object.hasOwn(room, "canvas")) {
+    if (!previous || previous.code !== room.code || previous.round.id !== room.round.id || previous.canvasEpoch !== room.canvasEpoch || previous.canvasVersion !== room.canvasVersion) throw new Error("CANVAS_DESYNC");
+    return { ...room, canvas: previous.canvas, canvasResetKey: previous.canvasResetKey || 0 };
+  }
+  return { ...room, canvasResetKey: previous?.code === room.code ? previous.canvasResetKey || 0 : 0 };
+}
+
 export function applyCanvasEvent(room, event) {
   if (!room || room.code !== event.roomCode || room.round.id !== event.roundId) return room;
   if (event.version < room.canvasVersion) return room;

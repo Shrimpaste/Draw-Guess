@@ -164,7 +164,7 @@ export function createApp() {
     if (!parsed.success) return res.status(400).json({ error: "Invalid round payload" });
     const room = store.startRound(req.player.id, parsed.data.roomCode, parsed.data.roundId);
     notifyRoom(room.code);
-    return res.json({ room: store.serializeRoomFor(req.player.id, room.code) });
+    return req.query.compact === "1" ? res.status(204).end() : res.json({ room: store.serializeRoomFor(req.player.id, room.code) });
   });
 
   app.post("/api/rounds/skip", (req, res) => {
@@ -172,7 +172,7 @@ export function createApp() {
     if (!parsed.success) return res.status(400).json({ error: "Invalid round payload" });
     const room = store.skipRound(req.player.id, parsed.data.roomCode, parsed.data.roundId);
     notifyRoom(room.code);
-    return res.json({ room: store.serializeRoomFor(req.player.id, room.code) });
+    return req.query.compact === "1" ? res.status(204).end() : res.json({ room: store.serializeRoomFor(req.player.id, room.code) });
   });
 
   app.post("/api/rounds/prompt", (req, res) => {
@@ -180,7 +180,7 @@ export function createApp() {
     if (!parsed.success) return res.status(400).json({ error: "Invalid prompt payload" });
     const room = store.submitPrompt(req.player.id, parsed.data.roomCode, parsed.data.word, parsed.data.roundId);
     notifyRoom(room.code);
-    return res.json({ room: store.serializeRoomFor(req.player.id, room.code) });
+    return req.query.compact === "1" ? res.status(204).end() : res.json({ room: store.serializeRoomFor(req.player.id, room.code) });
   });
 
   app.post("/api/rounds/guess", (req, res) => {
@@ -188,7 +188,7 @@ export function createApp() {
     if (!parsed.success) return res.status(400).json({ error: "Invalid guess payload" });
     const room = store.submitGuess(req.player.id, parsed.data.roomCode, parsed.data.guess, parsed.data.roundId);
     notifyRoom(room.code);
-    return res.json({ room: store.serializeRoomFor(req.player.id, room.code) });
+    return req.query.compact === "1" ? res.status(204).end() : res.json({ room: store.serializeRoomFor(req.player.id, room.code) });
   });
 
   app.post("/api/rounds/judge", (req, res) => {
@@ -196,7 +196,7 @@ export function createApp() {
     if (!parsed.success) return res.status(400).json({ error: "Invalid judge payload" });
     const room = store.judgeGuess(req.player.id, parsed.data.roomCode, parsed.data.guessId, parsed.data.accepted, parsed.data.roundId);
     notifyRoom(room.code);
-    return res.json({ room: store.serializeRoomFor(req.player.id, room.code) });
+    return req.query.compact === "1" ? res.status(204).end() : res.json({ room: store.serializeRoomFor(req.player.id, room.code) });
   });
 
   app.get("/api/packs", (_, res) => {

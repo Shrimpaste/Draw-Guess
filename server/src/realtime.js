@@ -6,6 +6,12 @@ function send(socket, payload) {
   if (socket.readyState !== socket.OPEN) return;
   if (socket.bufferedAmount > 4 * 1024 * 1024) return socket.terminate();
   socket.send(JSON.stringify(payload));
+  if (payload.type === "room:update") {
+    const room = payload.room;
+    socket.canvasCursor = room ? { code: room.code, roundId: room.round.id, epoch: room.canvasEpoch, version: room.canvasVersion } : null;
+  } else if (payload.type === "canvas:stroke" || payload.type === "canvas:snapshot") {
+    socket.canvasCursor = { code: payload.roomCode, roundId: payload.roundId, epoch: payload.epoch, version: payload.version };
+  }
 }
 
 export function attachRealtime(server, store) {
@@ -20,32 +26,39 @@ export function attachRealtime(server, store) {
       socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
       return;
     }
-    wss.handleUpgrade(request, socket, head, (ws) => wss.emit("connection", ws, session.token));
+    wss.handleUpgrade(request, socket, head, (ws) => wss.emit("connection", ws, session.token, url.searchParams.get("compact") === "1"));
   };
   server.on("upgrade", upgrade);
 
-  const snapshot = (session) => ({
-    type: "room:update", revision: store.revision,
-    room: session.roomCode ? store.serializeRoomFor(session.playerId, session.roomCode) : null,
-  });
+  function snapshot(session, socket) {
+    const room = session.roomCode ? store.serializeRoomFor(session.playerId, session.roomCode) : null;
+    const cursor = socket.canvasCursor;
+    // WebSocket ordering guarantees that this socket already has these points.
+    // New connections, new rounds and missed versions always get a full canvas.
+    if (socket.compact && room && cursor?.code === room.code && cursor.roundId === room.round.id && cursor.epoch === room.canvasEpoch && cursor.version === room.canvasVersion) {
+      delete room.canvas;
+    }
+    return { type: "room:update", revision: store.revision, room };
+  }
   function broadcastState(roomCode) {
     const lobby = store.listLobby();
     for (const session of store.sessions.values()) {
       for (const socket of session.sockets) {
-        if (session.roomCode === roomCode || !session.roomCode) send(socket, snapshot(session));
+        if (session.roomCode === roomCode || !session.roomCode) send(socket, snapshot(session, socket));
         if (!session.roomCode) send(socket, { type: "lobby:update", lobby, revision: store.revision });
       }
     }
   }
   wss.on("error", (error) => console.error("Realtime server error:", error.message));
-  wss.on("connection", (socket, token) => {
+  wss.on("connection", (socket, token, compact) => {
+    socket.compact = compact;
     socket.on("error", () => socket.terminate());
     const session = store.bindSocket(token, socket);
     if (!session) return socket.close(4001, "Session expired");
     socket.alive = true;
     socket.on("pong", () => { socket.alive = true; });
     send(socket, { type: "connected", playerId: session.playerId, lobby: store.listLobby(), revision: store.revision });
-    send(socket, snapshot(session));
+    send(socket, snapshot(session, socket));
     let windowStart = Date.now();
     let count = 0;
     socket.on("message", (raw) => {
