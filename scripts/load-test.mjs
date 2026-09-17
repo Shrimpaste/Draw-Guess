@@ -11,8 +11,12 @@ const args = process.argv.slice(2);
 const compact = !args.includes("--legacy");
 const clients = Number(args.find((arg) => arg.startsWith("--clients="))?.split("=")[1] || 10);
 const interval = Number(args.find((arg) => arg.startsWith("--interval="))?.split("=")[1] || 50);
+const chunks = Number(args.find((arg) => arg.startsWith("--chunks="))?.split("=")[1] || 200);
+const pointsPerChunk = Number(args.find((arg) => arg.startsWith("--points-per-chunk="))?.split("=")[1] || 16);
 assert.ok(Number.isInteger(clients) && clients >= 3 && clients <= 10);
-assert.ok(Number.isFinite(interval) && interval >= 25);
+assert.ok(Number.isFinite(interval) && interval >= 25 && interval <= 100);
+assert.ok(Number.isInteger(chunks) && chunks >= 40 && chunks <= 500);
+assert.ok(Number.isInteger(pointsPerChunk) && pointsPerChunk >= 1 && pointsPerChunk <= 128);
 let base = args.find((arg) => !arg.startsWith("--"));
 let server, store, realtime;
 if (!base) {
@@ -26,6 +30,8 @@ if (!base) {
 }
 base = new URL(base).origin;
 const peers = [], latencies = [], sent = new Map();
+const roundTrips = [];
+let pingTimer;
 let bytes = 0, errors = [];
 let roomBytes = 0, canvasBytes = 0, httpBytes = 0, fullCanvases = 0;
 const startedAt = performance.now();
@@ -44,6 +50,10 @@ async function connect(peer) {
   const socket = new WebSocket(base.replace(/^http/, "ws") + "/ws?token=" + peer.token + (compact ? "&compact=1" : ""));
   peer.socket = socket;
   socket.on("error", (error) => errors.push(error.message));
+  socket.on("pong", (raw) => {
+    const stamp = String(raw);
+    if (stamp.startsWith("latency:")) roundTrips.push(performance.now() - Number(stamp.slice(8)));
+  });
   socket.on("message", (raw) => {
     bytes += raw.length;
     const event = JSON.parse(String(raw));
@@ -75,26 +85,32 @@ try {
   const guessers = peers.filter((peer) => peer !== drawer);
   const roundId = drawer.room.round.id, epoch = drawer.room.canvasEpoch;
   const initialVersion = drawer.room.canvasVersion;
-  for (let chunk = 0; chunk < 200; chunk++) {
+  pingTimer = setInterval(() => {
+    if (drawer.socket.readyState === WebSocket.OPEN) drawer.socket.ping(`latency:${performance.now()}`);
+  }, 500);
+  for (let chunk = 0; chunk < chunks; chunk++) {
     const version = initialVersion + chunk + 1;
     sent.set(version, performance.now());
-    drawer.socket.send(JSON.stringify({ type: "canvas:stroke", roundId, epoch, stroke: { id: "load-stroke", offset: chunk * 16, tool: "pen", color: "#16110f", width: 5, points: Array.from({ length: 16 }, (_, i) => ({ x: (chunk * 16 + i) % 960, y: 300 + Math.sin((chunk * 16 + i) / 30) * 100 })) } }));
-    if (chunk === 80) {
+    drawer.socket.send(JSON.stringify({ type: "canvas:stroke", roundId, epoch, stroke: { id: "load-stroke", offset: chunk * pointsPerChunk, tool: "pen", color: "#16110f", width: 5, points: Array.from({ length: pointsPerChunk }, (_, i) => ({ x: (chunk * pointsPerChunk + i) % 960, y: 300 + Math.sin((chunk * pointsPerChunk + i) / 30) * 100 })) } }));
+    if (chunk === Math.floor(chunks * 0.4)) {
       const peer = guessers[0]; peer.socket.close(); await connect(peer);
       await until(() => peer.room?.canvasVersion >= version, "reconnect snapshot");
     }
-    if (chunk % 50 === 0) await api("/api/rounds/guess", guessers[1], { roomCode: room.code, roundId, guess: "回归测试答案" });
+    if (chunk % Math.ceil(chunks / 4) === 0) await api("/api/rounds/guess", guessers[1], { roomCode: room.code, roundId, guess: "回归测试答案" });
     await delay(interval);
   }
-  await until(() => peers.every((peer) => peer.room?.canvasVersion === initialVersion + 200), "all canvas versions");
-  for (const peer of peers) assert.equal(peer.room.canvas[0].points.length, 3200);
+  await until(() => peers.every((peer) => peer.room?.canvasVersion === initialVersion + chunks), "all canvas versions");
+  for (const peer of peers) assert.equal(peer.room.canvas[0].points.length, chunks * pointsPerChunk);
   assert.equal(errors.length, 0, errors.join(", "));
   await api("/api/rounds/guess", guessers[0], { roomCode: room.code, roundId, guess: drawer.room.round.word });
   await until(() => peers.every((peer) => peer.room?.round.status === "finished"), "round result");
-  for (const peer of peers) { assert.equal(peer.room.canvas[0].points.length, 3200); assert.deepEqual(peer.room.round.winnerIds, [guessers[0].id]); }
+  for (const peer of peers) { assert.equal(peer.room.canvas[0].points.length, chunks * pointsPerChunk); assert.deepEqual(peer.room.round.winnerIds, [guessers[0].id]); }
   latencies.sort((a, b) => a - b);
-  console.log(JSON.stringify({ target: base, clients, compact, interval, roomBytes, canvasBytes, httpBytes, fullCanvases, chunks: 200, points: 3200, reconnects: 1, errors: errors.length, elapsedSeconds: +((performance.now() - startedAt) / 1000).toFixed(2), observedMessages: latencies.length, p95DeliveryMs: +latencies[Math.floor(latencies.length * .95)].toFixed(2), receivedMiB: +(bytes / 1048576).toFixed(2), runnerRssMiB: +(process.memoryUsage().rss / 1048576).toFixed(2) }, null, 2));
+  roundTrips.sort((a, b) => a - b);
+  const percentile = (values, fraction) => values.length ? +values[Math.floor(values.length * fraction)].toFixed(2) : null;
+  console.log(JSON.stringify({ target: base, clients, compact, interval, roomBytes, canvasBytes, httpBytes, fullCanvases, chunks, points: chunks * pointsPerChunk, reconnects: 1, errors: errors.length, elapsedSeconds: +((performance.now() - startedAt) / 1000).toFixed(2), observedMessages: latencies.length, p50DeliveryMs: percentile(latencies, .5), p95DeliveryMs: percentile(latencies, .95), rttSamples: roundTrips.length, p50RttMs: percentile(roundTrips, .5), p95RttMs: percentile(roundTrips, .95), receivedMiB: +(bytes / 1048576).toFixed(2), runnerRssMiB: +(process.memoryUsage().rss / 1048576).toFixed(2) }, null, 2));
 } finally {
+  clearInterval(pingTimer);
   for (const peer of peers) { peer.socket?.terminate(); await api("/api/session", peer, undefined, "DELETE").catch(() => {}); }
   if (realtime) { for (const socket of realtime.clients) socket.terminate(); realtime.close(); }
   if (server) await new Promise((resolve) => server.close(resolve));
