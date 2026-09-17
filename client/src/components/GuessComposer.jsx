@@ -4,7 +4,7 @@ import { errorText } from "../errors.js";
 import { Input } from "./ui/field.jsx";
 import { Button } from "./ui/button.jsx";
 
-export const GuessComposer = memo(function GuessComposer({ roundId, online, onGuess }) {
+export const GuessComposer = memo(function GuessComposer({ roundId, online, onGuess, confirmedGuessIds }) {
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState(null);
@@ -21,6 +21,11 @@ export const GuessComposer = memo(function GuessComposer({ roundId, online, onGu
     busyRef.current = false;
     edits.current++;
   }, [roundId]);
+  useEffect(() => {
+    if (!failure || !confirmedGuessIds?.has(failure.clientGuessId)) return;
+    setFailure(null);
+    if (failure.restored && edits.current === failure.editVersion) setDraft("");
+  }, [confirmedGuessIds, failure]);
   async function submit(value = draft.trim()) {
     if (!value || !online || busyRef.current || composing.current) return;
     const submittedRound = roundId,
@@ -38,8 +43,9 @@ export const GuessComposer = memo(function GuessComposer({ roundId, online, onGu
       if (context.current !== submittedRound) return;
     } catch (error) {
       if (context.current === submittedRound) {
-        setFailure({ text: errorText(error), value, clientGuessId });
-        if (matchesDraft && edits.current === version) setDraft(value);
+        const restored = matchesDraft && edits.current === version;
+        setFailure({ text: errorText(error), value, clientGuessId, restored, editVersion: version });
+        if (restored) setDraft(value);
       }
     } finally {
       if (context.current === submittedRound) {

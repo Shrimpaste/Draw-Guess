@@ -346,6 +346,7 @@ export function GameRoom({
               roundId={round.id}
               online={online && !busy}
               onGuess={submitGuess}
+              confirmedGuessIds={confirmedGuesses}
             />
           ) : (
             <div className="role-hint">

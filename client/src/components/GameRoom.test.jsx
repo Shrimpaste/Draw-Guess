@@ -125,6 +125,21 @@ it("keeps the local echo until a late broadcast and retries failures with the sa
   expect(screen.getAllByText("火箭")).toHaveLength(1);
   expect(screen.queryByText("等待同步…")).not.toBeInTheDocument();
 });
+
+it.each([false, true])("clears a failed-send warning when confirmation arrives later (new draft: %s)", async (newDraft) => {
+  const onGuess = vi.fn().mockRejectedValue(new Error("响应超时"));
+  const props = { room: baseRoom, connection: "online", onGuess };
+  const view = render(<GameRoom {...props} />);
+  fireEvent.change(screen.getByLabelText("你的答案"), { target: { value: "火箭" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送" }));
+  await screen.findByRole("alert");
+  if (newDraft) fireEvent.change(screen.getByLabelText("你的答案"), { target: { value: "月亮" } });
+  const clientGuessId = onGuess.mock.calls[0][1];
+  view.rerender(<GameRoom {...props} room={{ ...baseRoom, messages: [{ id: "server-id", clientGuessId, playerId: "guess", text: "火箭", type: "guess", status: "pending" }] }} />);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("你的答案")).toHaveValue(newDraft ? "月亮" : "");
+  expect(screen.getAllByText("火箭")).toHaveLength(1);
+});
 it("judges the selected pending guess by id and exposes round results", () => {
   const onJudge = vi.fn();
   const room = {
