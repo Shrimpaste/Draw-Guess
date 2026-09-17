@@ -58,6 +58,8 @@ CI 在 Node 24 / Ubuntu 上执行测试、构建、10 客户端验证和生产�
 
 延迟对照：`node scripts/load-test.mjs --legacy` 与 `node scripts/load-test.mjs` 比较旧版完整同步和紧凑同步，可用 `--clients=3`、`--interval=25` 调整人数与分块间隔。报告分别统计房间、画布增量和 HTTP 响应字节；延迟为脚本发出到收到消息的时间，不包含浏览器绘制。
 
+等点数频率对照用 `--interval=25 --chunks=400 --points-per-chunk=8`，与默认 50 ms / 200 × 16 点比较；报告同时采样 WebSocket RTT，以区分线路波动。实测结果与限制见 [延迟优化验证](docs/LATENCY-RESULTS.md)。
+
 新版通过 `/ws?compact=1` 协商复用当前连接已经收到的画布；重连和新回合仍发送完整画布。`/api/rounds/*?compact=1` 成功返回 204，权威状态由 WS 同步，避免 HTTP 确认抢先推进状态版本。未协商的客户端保持完整响应。
 
 ## UI 开发与体验
