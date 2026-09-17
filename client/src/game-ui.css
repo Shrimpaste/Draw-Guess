@@ -412,6 +412,13 @@
     background: #edf5eb;
     color: #296046;
   }
+  .message-sending > small,
+  .message-confirming > small {
+    color: #786d61;
+  }
+  .message-failed > small {
+    color: #9e3526;
+  }
   .new-messages {
     position: absolute;
     bottom: 8px;

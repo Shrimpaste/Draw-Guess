@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { ArrowUp, RotateCcw } from "lucide-react";
 import { errorText } from "../errors.js";
 import { Input } from "./ui/field.jsx";
 import { Button } from "./ui/button.jsx";
 
-export function GuessComposer({ roundId, online, onGuess }) {
+export const GuessComposer = memo(function GuessComposer({ roundId, online, onGuess }) {
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState(null);
@@ -25,19 +25,22 @@ export function GuessComposer({ roundId, online, onGuess }) {
     if (!value || !online || busyRef.current || composing.current) return;
     const submittedRound = roundId,
       version = edits.current,
-      matchesDraft = value === draft.trim();
+      matchesDraft = value === draft.trim(),
+      clientGuessId = failure?.value === value ? failure.clientGuessId : crypto.randomUUID();
     busyRef.current = true;
     setPending(true);
     setFailure(null);
+    if (matchesDraft) setDraft("");
     input.current?.focus({ preventScroll: true });
     try {
-      if ((await onGuess(value)) === false)
+      if ((await onGuess(value, clientGuessId)) === false)
         throw new Error("发送失败，请稍后重试。");
       if (context.current !== submittedRound) return;
-      if (matchesDraft && edits.current === version) setDraft("");
     } catch (error) {
-      if (context.current === submittedRound)
-        setFailure({ text: errorText(error), value });
+      if (context.current === submittedRound) {
+        setFailure({ text: errorText(error), value, clientGuessId });
+        if (matchesDraft && edits.current === version) setDraft(value);
+      }
     } finally {
       if (context.current === submittedRound) {
         busyRef.current = false;
@@ -122,4 +125,4 @@ export function GuessComposer({ roundId, online, onGuess }) {
       )}
     </div>
   );
-}
+});

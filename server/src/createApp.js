@@ -186,7 +186,7 @@ export function createApp() {
   app.post("/api/rounds/guess", (req, res) => {
     const parsed = guessSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Invalid guess payload" });
-    const room = store.submitGuess(req.player.id, parsed.data.roomCode, parsed.data.guess, parsed.data.roundId);
+    const room = store.submitGuess(req.player.id, parsed.data.roomCode, parsed.data.guess, parsed.data.roundId, parsed.data.clientGuessId);
     notifyRoom(room.code);
     return req.query.compact === "1" ? res.status(204).end() : res.json({ room: store.serializeRoomFor(req.player.id, room.code) });
   });

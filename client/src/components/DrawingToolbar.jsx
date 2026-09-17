@@ -1,4 +1,5 @@
 import { ConfirmAction } from "./ui/overlay.jsx";
+import { memo } from "react";
 import {
   Check,
   Circle,
@@ -20,7 +21,7 @@ export const palette = [
   ["#2db489", "青绿"],
   ["#8b5cf6", "鸢紫"],
 ];
-export function DrawingToolbar({
+export const DrawingToolbar = memo(function DrawingToolbar({
   tool,
   onToolChange,
   canReset,
@@ -159,4 +160,4 @@ export function DrawingToolbar({
       </div>
     </TooltipProvider>
   );
-}
+});

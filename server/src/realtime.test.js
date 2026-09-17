@@ -112,11 +112,15 @@ it("omits only already delivered canvases for compact sockets and restores full 
   a.send(JSON.stringify(packet));
   await message(b, (m) => m.type === "canvas:stroke");
   b.messages = []; legacy.messages = [];
-  const response = await request(app).post("/api/rounds/guess?compact=1").set("Authorization", `Bearer ${viewer.token}`).send({ roomCode: room.code, roundId: room.round.id, guess: "肯定不是答案的测试词" });
+  const clientGuessId = "e36a0a9d-451b-4ac2-b9ee-8b994d708722";
+  const response = await request(app).post("/api/rounds/guess?compact=1").set("Authorization", `Bearer ${viewer.token}`).send({ roomCode: room.code, roundId: room.round.id, guess: "肯定不是答案的测试词", clientGuessId });
   expect(response.status).toBe(204);
   const update = await message(b, (m) => m.room?.messages.some((v) => v.type === "guess"));
   expect(update.room).not.toHaveProperty("canvas");
   expect(update.room.canvasVersion).toBe(room.canvasVersion);
+  expect(update.room.messages.find((message) => message.type === "guess").clientGuessId).toBe(clientGuessId);
+  await request(app).post("/api/rounds/guess?compact=1").set("Authorization", `Bearer ${viewer.token}`).send({ roomCode: room.code, roundId: room.round.id, guess: "肯定不是答案的测试词", clientGuessId }).expect(204);
+  expect(room.messages.filter((message) => message.clientGuessId === clientGuessId)).toHaveLength(1);
   expect((await message(legacy, (m) => m.room?.messages.some((v) => v.type === "guess"))).room.canvas[0].points).toHaveLength(1);
   a.send(JSON.stringify({ ...packet, stroke: { ...packet.stroke, offset: 1, points: [{ x: 2, y: 2 }] } }));
   await message(b, (m) => m.type === "canvas:stroke" && m.stroke.offset === 1);

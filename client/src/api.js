@@ -1,6 +1,7 @@
 async function request(path, { method = "GET", token, body, adminKey } = {}) {
   const response = await fetch(path, {
     method,
+    signal: AbortSignal.timeout(15000),
     headers: {
       "Content-Type": "application/json",
       ...(adminKey ? { "x-admin-key": adminKey } : {}),
@@ -68,11 +69,11 @@ export const api = {
       token,
       body: { roomCode, word, roundId },
     }),
-  submitGuess: (token, roomCode, guess, roundId) =>
+  submitGuess: (token, roomCode, guess, roundId, clientGuessId) =>
     request("/api/rounds/guess?compact=1", {
       method: "POST",
       token,
-      body: { roomCode, guess, roundId },
+      body: { roomCode, guess, roundId, clientGuessId },
     }),
   judgeGuess: (token, roomCode, guessId, accepted, roundId) =>
     request("/api/rounds/judge?compact=1", {
