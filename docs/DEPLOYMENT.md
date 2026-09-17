@@ -1,81 +1,147 @@
-# VPS 部署与运维
+# VPS 运维手册
 
-## 当前部署（2026-09-17）
+本文件描述运维机制；**当前稳定代码 / 标签 / 回滚候选以 [HANDOFF](HANDOFF.md) 为唯一版本索引**。不要将历史报告里的 release 名称当作实时服务器状态。
 
-- 入口：[https://170.106.190.20](https://170.106.190.20)。HTTP 自动跳转 HTTPS；公网可信证书已验证。
-- 当前发布：`e5c04ea`；`5717337` 与优化前的 `87835b6` 保留供回滚。后续文档 / 合并提交不改变运行代码；对应代码推送 GitHub main。
-- Let's Encrypt YE2 签发 IP 证书，当前到期时间 2026-09-22 06:20:26 UTC；Caddy 已配置自动续期，首次续期尚未发生。
-- 管理密钥是服务器上独立生成的随机值，仅在 `/etc/draw-guess.env` 的 `ADMIN_KEY` 中，使用 SSH + sudo 获取；不在仓库或本地凭据文件中。管理员先正常登录大厅，再打开词包审核。
-- 每日备份已自动运行成功，备份位于 `/var/lib/draw-guess/backups/`。目前备份保存在同一 VPS，尚无异机备份。
-- Windows / Debian 均 67 项测试通过。最新 VPS 隔离十人验证：200 分块 / 3200 点 / 一次重连 / 0 错误，P95 1.65 ms。公网新旧协议、25 ms 等点数对照及猜词重试验证见 [延迟优化结果](LATENCY-RESULTS.md)。
-- 当前为单实例朋友试玩版本：重启会结束房间，词库持久保存。实际手机硬件触摸、跨运营商延迟和完整灾难恢复演练尚未验证。
+## 1. 架构与访问
 
-## 架构与路径
+- 入口：https://170.106.190.20；本机已配置 SSH：`ssh codex@170.106.190.20`。
+- 基线环境：Debian 12、4 GB、Node 24、Caddy 2.11.4。后续维护先查实际版本，不根据此记录自动降级。
+- Caddy 提供 80 → HTTPS 跳转和 443；静态文件取 current/client/dist，`/api/*`、`/ws` 反代到 `127.0.0.1:3001`。
+- 单实例 GameStore，不支持无损热切换；应用重启结束所有内存对局 / 身份。数据库词库保留。
+- 同机已有其他服务，不能占用 / 清理它们的端口、目录或 systemd units。部署只触及下列项目专属路径。
 
-Node.js 24 + Caddy 2.11.4。HTTPS 443 提供静态前端，`/api/*` 与 `/ws` 反代至 `127.0.0.1:3001`。80 用于证书验证与 HTTPS 跳转。单 Node 实例，房间在内存中。
+| 路径 / 服务 | 用途 |
+|---|---|
+| `/srv/draw-guess/releases/<commit>/` | 只读版本源码、Linux node_modules、client/dist |
+| `/srv/draw-guess/current` | 当前版本软链接；原子切换 |
+| `/home/codex/draw-guess-staging/<commit>/` | 上传、安装和验证区；成功验证后复制到 releases |
+| `/var/lib/draw-guess/app.db` | 持久词包 SQLite |
+| `/var/lib/draw-guess/backups/` | 在线备份文件 |
+| `/etc/draw-guess.env` | 后端配置，600 权限；包含独立 ADMIN_KEY |
+| `/etc/draw-guess-proxy.env` | SITE_ADDRESS 配置，600 权限 |
+| `/etc/draw-guess.Caddyfile` | 当前代理配置，模板在仓库 deploy/ |
+| `/var/lib/draw-guess-proxy/` | 证书与 ACME 状态，必须保留 |
+| `/opt/draw-guess/bin/node`、`caddy` | systemd 使用的真实二进制路径，不依赖用户 nvm |
+| `draw-guess.service` | 应用，运行用户 draw-guess |
+| `draw-guess-proxy.service` | HTTPS，运行用户 draw-guess-proxy |
+| `draw-guess-backup.service` / `.timer` | SQLite 在线备份，服务器时区 03:30 + 最多 15 分钟随机延迟 |
 
-- `/srv/draw-guess/releases/<commit>/`：版本源码、Linux node_modules、client/dist。
-- `/srv/draw-guess/current`：当前版本符号链接。
-- `/var/lib/draw-guess/app.db`：持久词库；backups 子目录存每日备份。
-- `/var/lib/draw-guess-proxy/`：证书和续期状态，必须持久保留。
-- `/etc/draw-guess.env` / `/etc/draw-guess-proxy.env`：权限 600 的配置文件。
-- `draw-guess.service`、`draw-guess-proxy.service`、`draw-guess-backup.timer`：独立服务。
+代码归 root，运行服务只能写各自 state 目录；ProtectHome / ProtectSystem / NoNewPrivileges 等配置在 deploy units。不要为解决路径问题直接关闭隔离。
 
-## 无自有域名
+## 2. 凭据与配置
 
-推荐公网 IPv4 直接 HTTPS。配置显式使用 Let's Encrypt `shortlived` profile，证书约 160 小时有效，由常驻 Caddy 自动续期。保留显式 ACME issuer；默认 IP 自签证书不能用于朋友直接访问。
+后端示例见 [deploy/.env.example](../deploy/.env.example)。生产使用精确 `CLIENT_ORIGIN=https://170.106.190.20`、`TRUST_PROXY=loopback`、loopback 监听和持久 DB 路径。代理 SITE_ADDRESS 为该 IP。
 
-备选 `170-106-190-20.sslip.io` 或 `170-106-190-20.nip.io`，解析到对应 IP，无需注册。这是第三方公共 DNS 下的地址，不属于你；长期建议自有域名。切换地址同时修改 SITE_ADDRESS 与 CLIENT_ORIGIN。
+管理员先正常登录大厅，再打开词包审核。ADMIN_KEY 是服务端独立随机值，空值关闭审核；不是 sudo 密码。需要密钥时通过授权的 SSH / sudo 渠道私下获取，不在会话、命令日志或公开交接文档中打印。sudo 凭据由操作者安全提供；仓库不保存密码，也不依赖某台开发机的个人密钥文件路径。
 
-参考：[IP 证书](https://letsencrypt.org/2026/01/15/6day-and-ip-general-availability)、[Caddy TLS](https://caddyserver.com/docs/caddyfile/directives/tls)、[nip.io / sslip.io](https://nip.io/)。
+Node 默认不自动读 `.env`；systemd 通过 EnvironmentFile 注入。本地联调环境变量必须在启动 / import config 前设置。
 
-## 首次安装
+## 3. 无域名 HTTPS
 
-1. 检查已用端口、现有站点与云防火墙；允许 TCP 80/443，后端只监听本机。
-2. 将 Node 24 的真实可执行文件放到 `/opt/draw-guess/bin/node`，避免服务的 ProtectHome 与 nvm 路径冲突；安装官方 Caddy 2.11.4；用官方 release checksums 的 SHA-512 校验下载包，将二进制放到 `/opt/draw-guess/bin/caddy`。
-3. 创建无登录用户 draw-guess、draw-guess-proxy。代码归 root，词库目录归 draw-guess，证书目录归 draw-guess-proxy。
-4. 上传已审查提交到版本目录，在 Linux 上执行 npm ci、npm test、npm run build、npm run test:load。不要上传 Windows node_modules。
-5. 将 deploy 中 units 复制到 `/etc/systemd/system/`，Caddyfile 到 `/etc/draw-guess.Caddyfile`，.env.example 到 `/etc/draw-guess.env`。设置 `CLIENT_ORIGIN=https://170.106.190.20`；代理 env 为 `SITE_ADDRESS=170.106.190.20`。ADMIN_KEY 留空关闭审核，启用时用独立随机值，不能复用 sudo 密码。
-6. 使用 `caddy validate --config /etc/draw-guess.Caddyfile --adapter caddyfile`（注入 SITE_ADDRESS）和 `systemd-analyze verify` 检查配置。
-7. 建立 current 链接；运行 `systemctl daemon-reload` 和 `systemctl enable --now draw-guess draw-guess-proxy draw-guess-backup.timer`。
-8. 外网用正常证书校验访问 HTTPS 与 `/api/health`，执行 `npm run test:load -- https://170.106.190.20`，浏览器验证开局、绘画与猜词。
+当前使用 Let's Encrypt 公网 IP 短周期证书，Caddy 的 ACME issuer 明确配置 `shortlived` profile。不是自签证书，不需要用户绕过浏览器安全警告。证书由运行服务自动续期，80 / 443 与证书 state 目录需可用；不要把旧的到期时间抄成当前结论。
 
-## 更新与回滚
-
-新提交放入新目录并验证。记录 current 的旧目标，游戏空闲时创建 `/srv/draw-guess/next` 新链接，再用 `mv -Tf /srv/draw-guess/next /srv/draw-guess/current` 原子切换，重启 draw-guess 并验证健康接口。失败则同样切回旧版本。当前没有破坏性词库迁移，回滚程序无需回滚词库。
-
-重启会结束内存房间；SIGTERM / SIGINT 会清理连接、计时器与数据库。代理无需随应用更新重启。
-
-## 备份与恢复
-
-每日 timer 调用 SQLite 在线 backup API，兼容 WAL 并检查完整性。手动触发 `sudo systemctl start draw-guess-backup.service`。建议保留近 30 天，定期复制到另一设备；当前不自动删除备份。
-
-恢复前停止 draw-guess。将 app.db、app.db-wal、app.db-shm（若存在）一起移到新建的带时间戳保留目录；将选定备份复制为 app.db，恢复 draw-guess 所有权和 600 权限再启动。**不要覆盖运行中的数据库或保留旧 WAL。** 核对词包无误前保留旧文件。
-
-## 检查
+检查（以下运维命令在远端 Linux 执行）：
 
 ```sh
-systemctl status draw-guess draw-guess-proxy --no-pager
-journalctl -u draw-guess -u draw-guess-proxy -n 80 --no-pager
-systemctl list-timers draw-guess-backup.timer
 curl --fail https://170.106.190.20/api/health
-openssl s_client -connect 170.106.190.20:443 -servername 170.106.190.20 </dev/null 2>/dev/null | openssl x509 -noout -dates
+openssl s_client -connect 170.106.190.20:443 -servername 170.106.190.20 </dev/null 2>/dev/null | openssl x509 -noout -dates -issuer
+sudo journalctl -u draw-guess-proxy -n 80 --no-pager
 ```
 
-IP 证书期限短，确保代理常驻、证书目录可写、80/443 验证连接可达；关注到期与续期失败。
+若未来使用域名，另行验证 DNS、证书与 CLIENT_ORIGIN，不要混用 IP / 域名来源。免费公共 DNS 地址不等于自有域名；当前版本不依赖它们。
 
-## UI 版本部署（2026-09-16）
+## 4. 发布准备
 
-2ca8c70 已完成 Debian 全新安装、50 项测试、构建和隔离十人验证：200 分块 / 3200 点 / 1 次重连 / 0 错误，P95 1.53 ms。确认线上没有房间后切换，健康检查及公网上线登录 / WebSocket 成功，自动重启次数 0。保留 9a858c6 回滚。后续单字提示修复将在下一条发布记录更新当前版本。
+1. 按 [维护规范](MAINTENANCE.md) 完成本地分支、审查、测试 / 构建，记录不可变提交 ID。
+2. 确认此次任务授权包含部署及可能的短暂停机。已有明确授权不重复问；但不能把普通 feature 修改理解为可以随时终止玩家对局。
+3. 从干净提交 `git archive --format=tar --output=<archive-path> <commit>`；用 scp 上传 staging。不要打包工作区的 .env、DB、缓存、node_modules 或未提交代码。
+4. 在新的、尚不存在的 staging/<commit> 解包。确认 Node 24 / npm PATH；执行 `sh deploy/verify-release.sh`。它会 npm ci、67 项基线对应测试（未来数量可变）、build、隔离十人测试，并写 validation.exit。
+5. 需要 SSH 断开后继续验证时，在 staging 目录用 `nohup sh deploy/verify-release.sh > validation.log 2>&1 < /dev/null &`。之后必须读取 validation.exit 为 0，并审查日志。不能仅凭目录存在就上线。
+6. 依赖原生二进制必须在 Linux 安装。新的 release 归 root；不修改 / 覆盖旧 release。
 
-## 单字提示修复部署（2026-09-17）
+本次清理已将一次性 release / sudo helper 从原工作位置移至可恢复隔离目录（见 HANDOFF）；可复用验证入口是仓库 `deploy/verify-release.sh`，不用寻找旧临时文件。
 
-当前线上 release：`87835b6`，路径 `/srv/draw-guess/releases/87835b6`。Debian 全新安装、56 项测试、构建和隔离十人测试全部通过；200 分块 / 3200 点 / 1 次重连 / 0 错误，P95 1.58 ms。确认无房间后切换，应用与代理健康。保留上一版 `2ca8c70` 和更早 `9a858c6`。
+### 空闲检查
 
-公网三人裁定局分别使用「山」和「𠮷」：猜词者 HTTP / WebSocket 的 word 为 null，maskedWord 为「·」；画师知情及最终公布答案正常，测试身份已清理。当前浏览器工具未连接，新增单字修复使用真实公网 HTTP / WS 验证；UI 浏览器验收沿用上一版记录。
+先通过真实 API 创建一个临时检查身份，带 Bearer 请求 `/api/bootstrap` 检查 lobby，最后在 finally 调用 DELETE `/api/session` 删除检查身份。lobby 非空则推迟重启，不能为了发布主动删除其他房间。健康接口不提供房间列表；检查日志中不要输出 token。允许使用小型一次性脚本，但用后清理。
 
-## 延迟优化发布（2026-09-17）
+这不是跨进程锁；从检查到切换应尽量短。对有连续玩家的场景，先安排维护窗口，不能宣称当前机制零停机。
 
-最终 release `e5c04ea`：67 项测试、构建、隔离十人验证通过。确认无活动房间后切换 current，应用及代理正常，HTTPS 首页资源为 `/assets/index-BgwZYHFz.js`。保留前一迭代 `5717337` 及优化前版本 `87835b6`。无数据库迁移。
+## 5. 切换与回滚
 
-紧凑同步在相同分块下 WS 字节约减少 59%；最终 25 ms 等点数方案约减少 50%。公网 RTT 有明显波动，未宣称固定端到端加速。真实浏览器帧率 / 真机体验仍待验收。
+以下是**远端 sudo shell** 内的操作模板，release 必须替换为已经验证的实际十六进制 commit；执行前核对目标和无活动房间。不是让 agent 看到文档就自动执行：
+
+```sh
+set -eu
+release=REPLACE_WITH_VERIFIED_COMMIT
+case "$release" in ""|*[!0-9a-f]*) echo "Invalid release"; exit 1;; esac
+source=/home/codex/draw-guess-staging/$release
+target=/srv/draw-guess/releases/$release
+test "$(cat "$source/validation.exit")" = 0
+test ! -e "$target"
+test ! -e /srv/draw-guess/next
+test ! -L /srv/draw-guess/next
+previous=$(readlink -f /srv/draw-guess/current)
+case "$previous" in /srv/draw-guess/releases/*) ;; *) exit 1;; esac
+cp -a "$source" "$target"
+chown -R root:root "$target"
+ln -s "$target" /srv/draw-guess/next
+mv -Tf /srv/draw-guess/next /srv/draw-guess/current
+systemctl restart draw-guess
+```
+
+记录 previous，给服务少量启动时间并重试本机 health；接着查服务状态、日志、公网 HTTPS、首页新资源与真实 WS。应用更新通常不需要重启代理。
+
+若健康检查失败，使用同样的 next → current 原子切换回 previous，重启应用并再次验证。不要为了回滚删除新 release 或恢复旧词库。本基线没有破坏性数据库迁移；未来若有迁移，发布前必须单独设计兼容与回滚。
+
+不要对固定名称 next 无条件 `rm -rf`。若发现已存在，先确认是上一次残留还是其他维护任务；查清归属再处理。
+
+## 6. 备份与恢复
+
+备份通过 `server/src/backup.js` 的 SQLite backup API，包含 WAL 中已提交内容；目标必须不存在，完成后做 integrity_check。手动触发：
+
+```sh
+sudo systemctl start draw-guess-backup.service
+sudo journalctl -u draw-guess-backup -n 30 --no-pager
+systemctl list-timers draw-guess-backup.timer --no-pager
+```
+
+基线已经验证实际备份产生且完整性检查通过；备份仍在同一 VPS，没有异机保护。保留策略建议按实际空间制定，当前任务不自动删除旧备份。
+
+恢复流程：
+
+1. 选定备份，在独立位置验证完整性和需要的词包；确认恢复会替换哪些新数据。
+2. 安排维护窗口，停止 draw-guess。将当前 app.db 及存在的 app.db-wal / app.db-shm 一起移到新建的带时间戳保留目录；不要丢弃。
+3. 将所选备份复制为 app.db，设置 draw-guess 所有权及 600 权限，确认不遗留旧 WAL / SHM。
+4. 启动应用，检查数据库、词包、接口和权限，确认后再考虑旧文件的保留期限。
+
+禁止在运行中只复制 app.db 作为一致性备份，禁止覆盖运行数据库。生产完整灾难恢复尚未演练；测试备份成功不等于灾难恢复流程已经实操通过。
+
+## 7. 日常检查与排障
+
+```sh
+readlink -f /srv/draw-guess/current
+systemctl status draw-guess draw-guess-proxy --no-pager
+systemctl show draw-guess -p NRestarts -p MemoryCurrent
+sudo journalctl -u draw-guess -n 80 --no-pager
+systemctl list-timers draw-guess-backup.timer --no-pager
+curl --fail http://127.0.0.1:3001/api/health
+curl --fail https://170.106.190.20/api/health
+```
+
+| 症状 | 优先核对 |
+|---|---|
+| 静态可访问，登录失败 | 应用健康、/api 代理、CLIENT_ORIGIN、浏览器实际 Origin |
+| HTTP 正常，WS 失败 | /ws 代理、token 是否重启失效、Origin、每身份 4 socket 限制 |
+| 重连后要求登录 | 超过 60 秒或应用重启时属于既定行为；临时网络失败不应直接注销 |
+| 画布不能继续画 | 是否等待 reset 快照；epoch / version / offset；服务端错误，而非先删保护逻辑 |
+| 偶发 429 / WS 断开 | HTTP 120/15s 按 IP，WS 60/s、64 KiB、4 MiB 积压、心跳；排查快速重试和弱网 |
+| 延迟明显 | 同时测 RTT、消息大小、应用 / 浏览器耗时；检查路径是否代理，不能仅升级 CPU |
+| 证书告警 | 实际有效期、ACME 日志、80/443、state 目录权限；不要关闭 TLS 校验来“修好” |
+| 管理接口 403 | 已登录身份、管理员密钥和来源；不要把 ADMIN_KEY 打印出来排查 |
+
+## 8. 发布记录与清洁边界
+
+发布后更新 HANDOFF 的版本身份及必要验收证据。GitHub Actions 只做 CI，不自动更新此 VPS；push 成功不等于部署成功。
+
+保留 current 及至少一个确认可回滚的旧 release、数据库、备份和证书状态。删除 staging / 旧 release 需单独确认未被 current、回滚计划或进行中的验证引用；本次用户要求的本地工作区整理没有清理远端 release、词库或证书。
