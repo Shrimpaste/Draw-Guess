@@ -5,7 +5,11 @@ import "./styles.css";
 import "./ui.css";
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
-if (import.meta.env.DEV && location.pathname === "/__ui") {
+if (import.meta.env.DEV && location.pathname === "/__game") {
+  import("./dev/GamePreview.jsx").then(({ default: Preview }) =>
+    root.render(<Preview />),
+  );
+} else if (import.meta.env.DEV && location.pathname === "/__ui") {
   import("./dev/UiPreview.jsx").then(({ default: Preview }) =>
     root.render(<Preview />),
   );

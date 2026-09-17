@@ -7,7 +7,120 @@ import { Popover } from "../components/ui/tool-overlays.jsx";
 import { Slider, ToggleGroup } from "../components/ui/tool-selection.jsx";
 
 export default function UiPreview() {
-  const [tool, setTool] = useState("pen"), [width, setWidth] = useState(5), [open, setOpen] = useState(false);
-  const [guess, setGuess] = useState(""), [pending, setPending] = useState(false), [error, setError] = useState("");
-  return <main className="ui-preview"><header><span className="eyebrow">INKMUSE · 组件交互样板</span><h1>落笔之前，先试试手感。</h1><p className="muted">开发预览 · 不连接游戏服务器</p></header><section className="preview-panel"><div className="preview-controls preview-tools"><ToggleGroup label="画具" value={tool} onValueChange={setTool} options={[{ value: "pen", label: "画笔", icon: Pencil }, { value: "eraser", label: "橡皮", icon: Eraser }]} /><Popover label="调整线宽" trigger={<Button variant="outline">笔宽 {width}</Button>}><Slider label="线宽" min={2} max={24} value={[width]} onValueChange={([next]) => setWidth(next)} /></Popover><Button variant="ghost" size="icon" aria-label="撤销" disabled><Undo2 /></Button></div><div style={{ minHeight: 220, display: "grid", placeItems: "center", background: "#fffdf9", borderRadius: 12, border: "1px solid #e6ddd1" }}><svg width="170" height="130" viewBox="0 0 170 130" aria-label="咖啡杯简笔画"><g fill="none" stroke="#51473d" strokeWidth="3" strokeLinecap="round"><path d="M35 50h85v40q-5 25-42 25T35 90Z M120 58h13q28 20-13 30 M45 123h65 M58 32q-14-13 0-24 M82 32q-14-13 0-24 M106 32q-14-13 0-24" /></g></svg></div><form className="stack" onSubmit={async(e)=>{ e.preventDefault(); if(pending)return; setPending(true); setError(""); await new Promise(r=>setTimeout(r,1500)); setPending(false); setError("模拟发送失败，输入还在，可以重试。"); }}><Field label="你的答案" error={error}>{props=><Input {...props} value={guess} onChange={e=>setGuess(e.target.value)} placeholder="这是……一杯咖啡？" />}</Field><div className="preview-controls"><Button type="submit" pending={pending} disabled={!guess.trim()}>发送答案</Button><Button variant="outline" onClick={()=>setOpen(true)}>试试弹窗</Button></div></form></section><Modal open={open} onOpenChange={setOpen} title="每个灵感，都值得被接住。" description="弹窗支持键盘导航、Escape 关闭和焦点返回。"><Field label="给你的画室起个名字">{props=><Input {...props} placeholder="午后速写室" />}</Field><footer className="ui-dialog-footer"><Button variant="outline" onClick={()=>setOpen(false)}>取消</Button><Button onClick={()=>setOpen(false)}>保存</Button></footer></Modal></main>;
+  const [tool, setTool] = useState("pen"),
+    [width, setWidth] = useState(5),
+    [open, setOpen] = useState(false);
+  const [guess, setGuess] = useState(""),
+    [pending, setPending] = useState(false),
+    [error, setError] = useState("");
+  return (
+    <main className="ui-preview">
+      <header>
+        <span className="eyebrow">INKMUSE · 组件交互样板</span>
+        <h1>落笔之前，先试试手感。</h1>
+        <p className="muted">开发预览 · 不连接游戏服务器</p>
+      </header>
+      <section className="preview-panel">
+        <div className="preview-controls preview-tools">
+          <ToggleGroup
+            label="画具"
+            value={tool}
+            onValueChange={setTool}
+            options={[
+              { value: "pen", label: "画笔", icon: Pencil },
+              { value: "eraser", label: "橡皮", icon: Eraser },
+            ]}
+          />
+          <Popover
+            label="调整线宽"
+            trigger={<Button variant="outline">笔宽 {width}</Button>}
+          >
+            <Slider
+              label="线宽"
+              min={2}
+              max={24}
+              value={[width]}
+              onValueChange={([next]) => setWidth(next)}
+            />
+          </Popover>
+          <Button variant="ghost" size="icon" aria-label="撤销" disabled>
+            <Undo2 />
+          </Button>
+        </div>
+        <div
+          style={{
+            minHeight: 220,
+            display: "grid",
+            placeItems: "center",
+            background: "#fffdf9",
+            borderRadius: 12,
+            border: "1px solid #e6ddd1",
+          }}
+        >
+          <svg
+            width="170"
+            height="130"
+            viewBox="0 0 170 130"
+            aria-label="咖啡杯简笔画"
+          >
+            <g
+              fill="none"
+              stroke="#51473d"
+              strokeWidth="3"
+              strokeLinecap="round"
+            >
+              <path d="M35 50h85v40q-5 25-42 25T35 90Z M120 58h13q28 20-13 30 M45 123h65 M58 32q-14-13 0-24 M82 32q-14-13 0-24 M106 32q-14-13 0-24" />
+            </g>
+          </svg>
+        </div>
+        <form
+          className="stack"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (pending) return;
+            setPending(true);
+            setError("");
+            await new Promise((r) => setTimeout(r, 1500));
+            setPending(false);
+            setError("模拟发送失败，输入还在，可以重试。");
+          }}
+        >
+          <Field label="你的答案" error={error}>
+            {(props) => (
+              <Input
+                {...props}
+                value={guess}
+                onChange={(e) => setGuess(e.target.value)}
+                placeholder="这是……一杯咖啡？"
+              />
+            )}
+          </Field>
+          <div className="preview-controls">
+            <Button type="submit" pending={pending} disabled={!guess.trim()}>
+              发送答案
+            </Button>
+            <Button variant="outline" onClick={() => setOpen(true)}>
+              试试弹窗
+            </Button>
+          </div>
+        </form>
+      </section>
+      <Modal
+        open={open}
+        onOpenChange={setOpen}
+        title="每个灵感，都值得被接住。"
+        description="弹窗支持键盘导航、Escape 关闭和焦点返回。"
+      >
+        <Field label="给你的画室起个名字">
+          {(props) => <Input {...props} placeholder="午后速写室" />}
+        </Field>
+        <footer className="ui-dialog-footer">
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            取消
+          </Button>
+          <Button onClick={() => setOpen(false)}>保存</Button>
+        </footer>
+      </Modal>
+    </main>
+  );
 }

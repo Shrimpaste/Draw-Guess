@@ -1,7 +1,15 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
 import { GameRoom } from "./GameRoom.jsx";
 vi.mock("./CanvasBoard.jsx", () => ({ CanvasBoard: () => <div>画布</div> }));
+afterEach(cleanup);
 const baseRoom = {
   code: "ABCDE",
   name: "朋友画室",
@@ -26,6 +34,41 @@ const baseRoom = {
     endsAt: Date.now() + 100000,
   },
 };
+it("does not carry a failed prompt response into a newer round", async () => {
+  let reject;
+  const onPrompt = vi.fn(
+    () =>
+      new Promise((_, fail) => {
+        reject = fail;
+      }),
+  );
+  const room = {
+    ...baseRoom,
+    me: { id: "host" },
+    round: {
+      ...baseRoom.round,
+      status: "collecting-word",
+      viewerIsGuesser: false,
+    },
+  };
+  const view = render(
+    <GameRoom room={room} connection="online" onPrompt={onPrompt} />,
+  );
+  fireEvent.change(screen.getByLabelText("本轮词语"), {
+    target: { value: "咖啡" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "确认出题" }));
+  view.rerender(
+    <GameRoom
+      room={{ ...room, round: { ...room.round, id: "r2" } }}
+      connection="online"
+      onPrompt={onPrompt}
+    />,
+  );
+  await act(async () => reject(new Error("旧回合失败")));
+  expect(screen.queryByText("旧回合失败")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("本轮词语")).toBeEnabled();
+});
 it("keeps failed guesses for retry and disables submission during reconnect", async () => {
   const onGuess = vi
     .fn()
@@ -38,6 +81,7 @@ it("keeps failed guesses for retry and disables submission during reconnect", as
   });
   fireEvent.click(screen.getByRole("button", { name: "发送" }));
   await waitFor(() => expect(onGuess).toHaveBeenCalledWith("火箭"));
+  await screen.findByRole("alert");
   expect(screen.getByLabelText("你的答案")).toHaveValue("火箭");
   fireEvent.click(screen.getByRole("button", { name: "发送" }));
   await waitFor(() =>

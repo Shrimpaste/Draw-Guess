@@ -87,10 +87,10 @@ export default function App() {
     applyResponse(await task(), session?.token);
     return true;
   }
-  async function mutate(task) {
+  async function mutate(task, action = "navigation") {
     if (inFlight.current) return false;
     inFlight.current = true;
-    setBusy(true);
+    setBusy(action);
     setError("");
     try {
       applyResponse(await task(), session?.token);
@@ -103,7 +103,7 @@ export default function App() {
       setBusy(false);
     }
   }
-  const disabled = busy || connection !== "online";
+  const disabled = !!busy || connection !== "online";
   const feedback = error || errorText(connectionError);
   return (
     <div className={`app-shell ${room ? "in-room" : ""}`}>
@@ -230,7 +230,7 @@ export default function App() {
               />
             </label>
             <small>支持中英文、数字、空格、下划线与短横线。</small>
-            <Button type="submit" pending={busy}>
+            <Button type="submit" pending={!!busy}>
               {busy ? "正在连接…" : "开始玩 →"}
             </Button>
             <p className="muted">
@@ -249,7 +249,7 @@ export default function App() {
           <GameRoom
             room={room}
             connection={connection}
-            busy={busy}
+            busy={!!busy}
             onStart={() =>
               gameAction(() =>
                 api.startRound(session.token, room.code, room.round.id),
@@ -307,12 +307,15 @@ export default function App() {
             packs={packs}
             lobby={lobby}
             disabled={disabled}
-            busy={busy}
+            busy={busy === "create"}
+            pendingJoin={busy}
             onDialog={setDialog}
             onCreate={() =>
-              mutate(() => api.createRoom(session.token, roomForm))
+              mutate(() => api.createRoom(session.token, roomForm), "create")
             }
-            onJoin={(code) => mutate(() => api.joinRoom(session.token, code))}
+            onJoin={(code) =>
+              mutate(() => api.joinRoom(session.token, code), `join:${code}`)
+            }
           />
         </Suspense>
       )}
@@ -356,7 +359,10 @@ export default function App() {
         position="top-center"
         closeButton
         containerAriaLabel="通知"
-          toastOptions={{ className: "ink-toast", closeButtonAriaLabel: "关闭通知" }}
+        toastOptions={{
+          className: "ink-toast",
+          closeButtonAriaLabel: "关闭通知",
+        }}
       />
     </div>
   );
