@@ -51,31 +51,31 @@ export const api = {
     request("/api/rooms/join", { method: "POST", token, body: { roomCode } }),
   leaveRoom: (token) => request("/api/rooms/leave", { method: "POST", token }),
   startRound: (token, roomCode, roundId) =>
-    request("/api/rounds/start", {
+    request("/api/rounds/start?compact=1", {
       method: "POST",
       token,
       body: { roomCode, roundId },
     }),
   skipRound: (token, roomCode, roundId) =>
-    request("/api/rounds/skip", {
+    request("/api/rounds/skip?compact=1", {
       method: "POST",
       token,
       body: { roomCode, roundId },
     }),
   submitPrompt: (token, roomCode, word, roundId) =>
-    request("/api/rounds/prompt", {
+    request("/api/rounds/prompt?compact=1", {
       method: "POST",
       token,
       body: { roomCode, word, roundId },
     }),
   submitGuess: (token, roomCode, guess, roundId) =>
-    request("/api/rounds/guess", {
+    request("/api/rounds/guess?compact=1", {
       method: "POST",
       token,
       body: { roomCode, guess, roundId },
     }),
   judgeGuess: (token, roomCode, guessId, accepted, roundId) =>
-    request("/api/rounds/judge", {
+    request("/api/rounds/judge?compact=1", {
       method: "POST",
       token,
       body: { roomCode, guessId, accepted, roundId },
