@@ -44,6 +44,7 @@ export const guessSchema = z.object({
   roomCode: z.string().trim().length(config.roomCodeLength),
   roundId: z.string().min(1).max(32),
   guess: trimmedString(config.maxWordLength),
+  clientGuessId: z.string().uuid().optional(),
 });
 
 export const judgeSchema = z.object({

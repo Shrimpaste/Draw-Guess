@@ -17,7 +17,9 @@ it("sends a dot immediately and streams moved points before pointer-up", () => {
   fireEvent.pointerDown(canvas, { button: 0, clientX: 10, clientY: 10 });
   expect(onStroke).toHaveBeenCalledOnce();
   fireEvent.pointerMove(canvas, { clientX: 20, clientY: 20 });
-  act(() => vi.advanceTimersByTime(50));
+  act(() => vi.advanceTimersByTime(24));
+  expect(onStroke).toHaveBeenCalledOnce();
+  act(() => vi.advanceTimersByTime(1));
   expect(onStroke.mock.calls[1][0]).toMatchObject({ offset: 1, points: [{ x: 20, y: 20 }] });
   fireEvent.pointerCancel(canvas);
   const count = onStroke.mock.calls.length;
@@ -25,6 +27,21 @@ it("sends a dot immediately and streams moved points before pointer-up", () => {
   act(() => vi.advanceTimersByTime(100));
   expect(onStroke).toHaveBeenCalledTimes(count);
   view.unmount();
+});
+
+it("streams sustained drawing at 40 Hz without waiting for network echoes", () => {
+  const onStroke = vi.fn(() => true);
+  render(<CanvasBoard room={room} isDrawer onStroke={onStroke} />);
+  const canvas = screen.getByLabelText("绘画画布");
+  fireEvent.pointerDown(canvas, { button: 0, clientX: 10, clientY: 10 });
+  for (let i = 1; i <= 40; i++) {
+    fireEvent.pointerMove(canvas, { clientX: 10 + i, clientY: 10 + i });
+    act(() => vi.advanceTimersByTime(25));
+  }
+  fireEvent.pointerUp(canvas);
+  expect(onStroke).toHaveBeenCalledTimes(41);
+  expect(onStroke.mock.calls.flatMap(([stroke]) => stroke.points)).toHaveLength(41);
+  expect(onStroke.mock.calls.at(-1)[0].offset).toBe(40);
 });
 it("drops unsent local input when the round changes or drawing permission is lost", () => {
   const onStroke = vi.fn(() => true);

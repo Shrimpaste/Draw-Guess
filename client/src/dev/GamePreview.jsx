@@ -174,12 +174,13 @@ export default function GamePreview() {
             setStatus("active");
             setEndsAt(Date.now() + 100000);
           }}
-          onGuess={async (text) => {
+          onGuess={async (text, clientGuessId) => {
             await delay();
             setMessages((old) => [
               ...old,
               {
                 id: crypto.randomUUID(),
+                clientGuessId,
                 type: "guess",
                 playerId: "你",
                 text,

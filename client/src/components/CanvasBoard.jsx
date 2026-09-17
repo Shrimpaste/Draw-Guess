@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DrawingToolbar, palette } from "./DrawingToolbar.jsx";
 
 export function drawStroke(context, stroke) {
@@ -38,8 +38,9 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
   const resetPendingRef = useRef(false);
   const [waitingForReset, setWaitingForReset] = useState(false);
   const canDraw = isDrawer && !waitingForReset;
-  const latest = useRef({ room, isDrawer, onStroke });
-  latest.current = { room, isDrawer, onStroke };
+  const confirmed = useMemo(() => new Map(room.canvas.map((stroke) => [stroke.id, stroke.points.length])), [room.canvas]);
+  const latest = useRef(null);
+  latest.current = { room, isDrawer, onStroke, confirmed };
   const [tool, setTool] = useState({
     color: palette[0][0],
     width: 5,
@@ -54,11 +55,8 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
     context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     context.clearRect(0, 0, 960, 620);
     context.drawImage(buffer, 0, 0, 960, 620);
-    const confirmed = new Map(
-      latest.current.room.canvas.map((stroke) => [stroke.id, stroke]),
-    );
     for (const local of localRef.current.values()) {
-      const length = confirmed.get(local.id)?.points.length || 0;
+      const length = latest.current.confirmed.get(local.id) || 0;
       if (length < local.points.length)
         drawStroke(context, {
           ...local,
@@ -204,7 +202,7 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
     localRef.current.set(stroke.id, stroke);
     flush();
     requestPaint();
-    if (activeRef.current) timerRef.current = setInterval(flush, 50);
+    if (activeRef.current) timerRef.current = setInterval(flush, 25);
   }
   function pointerMove(event) {
     const stroke = activeRef.current;
@@ -230,7 +228,7 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
       canvasRef.current.releasePointerCapture(stroke.pointerId);
     requestPaint();
   }
-  function resetCanvas(command) {
+  const resetCanvas = useCallback((command) => {
     if (!isDrawer || resetPendingRef.current) return;
     finish();
     // New strokes must use the epoch returned by the authoritative snapshot.
@@ -240,7 +238,9 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
       resetPendingRef.current = false;
       setWaitingForReset(false);
     }
-  }
+  }, [isDrawer]);
+  const undo = useCallback(() => resetCanvas(onUndo), [resetCanvas, onUndo]);
+  const clear = useCallback(() => resetCanvas(onClear), [resetCanvas, onClear]);
 
   return (
     <section
@@ -283,8 +283,8 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
           onToolChange={setTool}
           canReset={!!room.canvas.length}
           pending={waitingForReset}
-          onUndo={() => resetCanvas(onUndo)}
-          onClear={() => resetCanvas(onClear)}
+          onUndo={undo}
+          onClear={clear}
         />
       ) : (
         <div className="watching-label">

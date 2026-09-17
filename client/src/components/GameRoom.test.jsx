@@ -80,7 +80,7 @@ it("keeps failed guesses for retry and disables submission during reconnect", as
     target: { value: "火箭" },
   });
   fireEvent.click(screen.getByRole("button", { name: "发送" }));
-  await waitFor(() => expect(onGuess).toHaveBeenCalledWith("火箭"));
+  await waitFor(() => expect(onGuess).toHaveBeenCalledWith("火箭", expect.any(String)));
   await screen.findByRole("alert");
   expect(screen.getByLabelText("你的答案")).toHaveValue("火箭");
   fireEvent.click(screen.getByRole("button", { name: "发送" }));
@@ -90,6 +90,40 @@ it("keeps failed guesses for retry and disables submission during reconnect", as
   view.rerender(<GameRoom {...props} connection="reconnecting" />);
   expect(screen.getByLabelText("你的答案")).toBeEnabled();
   expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+});
+
+it("echoes a guess immediately and reconciles an early broadcast even if HTTP later fails", async () => {
+  let reject;
+  const onGuess = vi.fn(() => new Promise((_, fail) => { reject = fail; }));
+  const props = { room: baseRoom, connection: "online", onGuess };
+  const view = render(<GameRoom {...props} />);
+  fireEvent.change(screen.getByLabelText("你的答案"), { target: { value: "火箭" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送" }));
+  expect(screen.getByRole("log")).toHaveTextContent("火箭发送中…");
+  expect(screen.getByLabelText("你的答案")).toHaveValue("");
+  const clientGuessId = onGuess.mock.calls[0][1];
+  view.rerender(<GameRoom {...props} room={{ ...baseRoom, messages: [{ id: "server-id", clientGuessId, text: "火箭", type: "guess", playerId: "guess", status: "pending" }] }} />);
+  expect(screen.getAllByText("火箭")).toHaveLength(1);
+  expect(screen.getByRole("log")).toHaveTextContent("待裁定");
+  await act(async () => reject(new Error("响应丢失")));
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+it("keeps the local echo until a late broadcast and retries failures with the same id", async () => {
+  const onGuess = vi.fn().mockRejectedValueOnce(new Error("网络中断")).mockResolvedValue(true);
+  const props = { room: baseRoom, connection: "online", onGuess };
+  const view = render(<GameRoom {...props} />);
+  fireEvent.change(screen.getByLabelText("你的答案"), { target: { value: "火箭" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送" }));
+  await screen.findByRole("alert");
+  const id = onGuess.mock.calls[0][1];
+  fireEvent.click(screen.getByRole("button", { name: "重试" }));
+  await waitFor(() => expect(screen.getByRole("log")).toHaveTextContent("等待同步…"));
+  expect(onGuess).toHaveBeenLastCalledWith("火箭", id);
+  expect(screen.getAllByText("火箭")).toHaveLength(1);
+  view.rerender(<GameRoom {...props} room={{ ...baseRoom, messages: [{ id: "server-id", clientGuessId: id, playerId: "guess", text: "火箭", type: "guess", status: "pending" }] }} />);
+  expect(screen.getAllByText("火箭")).toHaveLength(1);
+  expect(screen.queryByText("等待同步…")).not.toBeInTheDocument();
 });
 it("judges the selected pending guess by id and exposes round results", () => {
   const onJudge = vi.fn();

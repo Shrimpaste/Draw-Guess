@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { ArrowDown, Check, X } from "lucide-react";
 import { Button } from "./ui/button.jsx";
 import { errorText } from "../errors.js";
@@ -55,7 +55,8 @@ function JudgeActions({ message, disabled, onJudge }) {
     </>
   );
 }
-export function GuessFeed({ room, canJudge, disabled, onJudge }) {
+const noLocalGuesses = [];
+export const GuessFeed = memo(function GuessFeed({ room, localGuesses = noLocalGuesses, canJudge, disabled, onJudge }) {
   const ref = useRef(null),
     pinned = useRef(true),
     last = useRef(null);
@@ -65,12 +66,12 @@ export function GuessFeed({ room, canJudge, disabled, onJudge }) {
     setUnread(false);
   }, [room.round.id]);
   useEffect(() => {
-    const newest = room.messages.at(-1)?.id;
+    const newest = localGuesses.at(-1)?.id || room.messages.at(-1)?.id;
     if (pinned.current && ref.current)
       ref.current.scrollTop = ref.current.scrollHeight;
     else if (newest !== last.current) setUnread(true);
     last.current = newest;
-  }, [room.messages]);
+  }, [room.messages, localGuesses]);
   return (
     <div className="feed-wrap">
       <div
@@ -116,6 +117,13 @@ export function GuessFeed({ room, canJudge, disabled, onJudge }) {
             )}
           </div>
         ))}
+        {localGuesses.map((guess) => (
+          <div key={guess.id} className={`message message-guess message-mine message-${guess.status}`}>
+            <strong>我</strong>
+            <span>{guess.text}</span>
+            <small>{{ sending: "发送中…", confirming: "等待同步…", failed: "未确认送达，请重试" }[guess.status]}</small>
+          </div>
+        ))}
       </div>
       {unread && (
         <Button
@@ -134,4 +142,4 @@ export function GuessFeed({ room, canJudge, disabled, onJudge }) {
       )}
     </div>
   );
-}
+}, (before, after) => before.room.messages === after.room.messages && before.room.round.id === after.room.round.id && before.room.me.id === after.room.me.id && before.localGuesses === after.localGuesses && before.canJudge === after.canJudge && before.disabled === after.disabled && before.onJudge === after.onJudge);

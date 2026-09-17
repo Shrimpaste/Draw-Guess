@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useGameConnection } from "./hooks/useGameConnection.js";
 import { api } from "./api.js";
 import { errorText } from "./errors.js";
@@ -87,6 +87,15 @@ export default function App() {
     applyResponse(await task(), session?.token);
     return true;
   }
+  const guess = useCallback(async (text, clientGuessId) => {
+    applyResponse(await api.submitGuess(session.token, room.code, text, room.round.id, clientGuessId), session.token);
+    return true;
+  }, [session?.token, room?.code, room?.round.id, applyResponse]);
+  const judge = useCallback(async (id, accepted) => {
+    applyResponse(await api.judgeGuess(session.token, room.code, id, accepted, room.round.id), session.token);
+    return true;
+  }, [session?.token, room?.code, room?.round.id, applyResponse]);
+  const draw = useCallback((type, stroke) => send({ type, ...(stroke ? { stroke } : {}), roundId: room.round.id, epoch: room.canvasEpoch }), [send, room?.round.id, room?.canvasEpoch]);
   async function mutate(task, action = "navigation") {
     if (inFlight.current) return false;
     inFlight.current = true;
@@ -260,35 +269,14 @@ export default function App() {
                 api.skipRound(session.token, room.code, room.round.id),
               )
             }
-            onGuess={(guess) =>
-              gameAction(() =>
-                api.submitGuess(session.token, room.code, guess, room.round.id),
-              )
-            }
+            onGuess={guess}
             onPrompt={(word) =>
               gameAction(() =>
                 api.submitPrompt(session.token, room.code, word, room.round.id),
               )
             }
-            onJudge={(id, accepted) =>
-              gameAction(() =>
-                api.judgeGuess(
-                  session.token,
-                  room.code,
-                  id,
-                  accepted,
-                  room.round.id,
-                ),
-              )
-            }
-            onCanvas={(type, stroke) =>
-              send({
-                type,
-                ...(stroke ? { stroke } : {}),
-                roundId: room.round.id,
-                epoch: room.canvasEpoch,
-              })
-            }
+            onJudge={judge}
+            onCanvas={draw}
           />
         </Suspense>
       ) : (

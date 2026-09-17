@@ -1,6 +1,7 @@
 import { Crown, Pencil, Sparkles, Trophy } from "lucide-react";
+import { memo } from "react";
 
-export function PlayerStrip({ room }) {
+export const PlayerStrip = memo(function PlayerStrip({ room }) {
   return (
     <section className="players-strip" aria-label="玩家与积分">
       <header>
@@ -57,4 +58,4 @@ export function PlayerStrip({ room }) {
       </div>
     </section>
   );
-}
+}, (before, after) => before.room.players === after.room.players && before.room.round === after.room.round && before.room.me.id === after.room.me.id && before.room.hostId === after.room.hostId);

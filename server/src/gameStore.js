@@ -289,8 +289,10 @@ export class GameStore {
     return room;
   }
 
-  submitGuess(playerId, roomCode, guess, roundId) {
+  submitGuess(playerId, roomCode, guess, roundId, clientGuessId) {
     const room = this.memberRoom(playerId, roomCode, roundId);
+    // A lost HTTP response may be retried after the guess already ended the round.
+    if (clientGuessId && room.messages.some((message) => message.playerId === playerId && message.roundId === roundId && message.clientGuessId === clientGuessId)) return room;
     if (room.round.status !== "active") throw new Error("ROUND_STATE_INVALID");
     if ([room.round.drawerId, room.round.prompterId].includes(playerId)) throw new Error("ROLE_CANNOT_GUESS");
     if (room.messages.filter((message) => message.status === "pending").length >= 100) throw new Error("GUESS_QUEUE_FULL");
@@ -298,6 +300,7 @@ export class GameStore {
     const correct = room.mode === "library" && canonicalWord(text) === canonicalWord(room.round.word);
     room.messages.push({
       id: nanoid(12), type: "guess", playerId, text, roundId: room.round.id,
+      ...(clientGuessId ? { clientGuessId } : {}),
       status: correct ? "accepted" : room.mode === "host-judged" ? "pending" : "rejected",
       createdAt: Date.now(),
     });

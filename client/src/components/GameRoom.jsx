@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CanvasBoard } from "./CanvasBoard.jsx";
 import { GuessComposer } from "./GuessComposer.jsx";
 import { GuessFeed } from "./GuessFeed.jsx";
@@ -40,6 +40,42 @@ export function GameRoom({
   const roundInFlight = useRef(false);
   const currentRound = useRef(room.round.id);
   currentRound.current = room.round.id;
+  const latestRoom = useRef(room);
+  latestRoom.current = room;
+  const [localGuesses, setLocalGuesses] = useState([]);
+  const confirmedGuesses = useMemo(() => new Set(
+    room.messages.filter((message) => message.playerId === room.me.id).map((message) => message.clientGuessId),
+  ), [room.messages, room.me.id]);
+  const pendingGuesses = useMemo(() => localGuesses.filter(
+    (guess) => guess.roundId === room.round.id && !confirmedGuesses.has(guess.id),
+  ), [localGuesses, confirmedGuesses, room.round.id]);
+  useEffect(() => {
+    setLocalGuesses((previous) => {
+      const remaining = previous.filter((guess) => guess.roundId === room.round.id && !confirmedGuesses.has(guess.id));
+      return remaining.length === previous.length ? previous : remaining;
+    });
+  }, [confirmedGuesses, room.round.id]);
+  const submitGuess = useCallback(async (text, id) => {
+    const roundId = room.round.id;
+    setLocalGuesses((previous) => [...previous.filter((guess) => guess.id !== id), { id, text, roundId, status: "sending" }]);
+    try {
+      if ((await onGuess(text, id)) === false) throw new Error("发送失败，请稍后重试。");
+      if (currentRound.current === roundId) {
+        setLocalGuesses((previous) => previous.map((guess) => guess.id === id ? { ...guess, status: "confirming" } : guess));
+      }
+      return true;
+    } catch (error) {
+      // The broadcast can succeed even when the HTTP response is lost.
+      if (latestRoom.current.messages.some((message) => message.playerId === latestRoom.current.me.id && message.clientGuessId === id)) return true;
+      if (currentRound.current === roundId) {
+        setLocalGuesses((previous) => previous.map((guess) => guess.id === id ? { ...guess, status: "failed" } : guess));
+      }
+      throw error;
+    }
+  }, [onGuess, room.round.id]);
+  const stroke = useCallback((value) => onCanvas("canvas:stroke", value), [onCanvas]);
+  const clear = useCallback(() => onCanvas("canvas:clear"), [onCanvas]);
+  const undo = useCallback(() => onCanvas("canvas:undo"), [onCanvas]);
   const [prompt, setPrompt] = useState("");
   const [promptBusy, setPromptBusy] = useState(false);
   const [promptError, setPromptError] = useState("");
@@ -234,9 +270,9 @@ export function GameRoom({
         <CanvasBoard
           room={room}
           isDrawer={drawer && round.status === "active" && online}
-          onStroke={(stroke) => onCanvas("canvas:stroke", stroke)}
-          onClear={() => onCanvas("canvas:clear")}
-          onUndo={() => onCanvas("canvas:undo")}
+          onStroke={stroke}
+          onClear={clear}
+          onUndo={undo}
         />
         <section className="guess-panel" aria-label="猜词与裁定">
           <header>
@@ -300,6 +336,7 @@ export function GameRoom({
           )}
           <GuessFeed
             room={room}
+            localGuesses={pendingGuesses}
             canJudge={prompter && round.status === "active"}
             disabled={disabled}
             onJudge={onJudge}
@@ -308,7 +345,7 @@ export function GameRoom({
             <GuessComposer
               roundId={round.id}
               online={online && !busy}
-              onGuess={onGuess}
+              onGuess={submitGuess}
             />
           ) : (
             <div className="role-hint">

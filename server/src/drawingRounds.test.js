@@ -10,6 +10,23 @@ function setup(mode = "library") {
 }
 const stroke = (id, offset = 0, count = 1) => ({ id, offset, tool: "pen", color: "#000000", width: 4, points: Array.from({ length: count }, (_, i) => ({ x: i, y: 1 })) });
 afterEach(() => { store?.dispose(); vi.useRealTimers(); });
+it("deduplicates guess retries per player and round, including a winning response lost in transit", () => {
+  const room = setup();
+  const guessers = room.players.filter((player) => player.id !== room.round.drawerId);
+  store.submitGuess(guessers[0].id, room.code, "错误答案", room.round.id, "retry");
+  store.submitGuess(guessers[0].id, room.code, "错误答案", room.round.id, "retry");
+  expect(room.messages.filter((message) => message.type === "guess")).toHaveLength(1);
+  store.submitGuess(guessers[1].id, room.code, "错误答案", room.round.id, "retry");
+  expect(room.messages.filter((message) => message.type === "guess")).toHaveLength(2);
+  store.submitGuess(guessers[0].id, room.code, "鲸鱼", room.round.id, "winner");
+  const scores = room.players.map((player) => player.score);
+  store.submitGuess(guessers[0].id, room.code, "鲸鱼", room.round.id, "winner");
+  expect(room.players.map((player) => player.score)).toEqual(scores);
+  expect(room.messages.filter((message) => message.type === "guess")).toHaveLength(3);
+  const oldRound = room.round.id;
+  store.startRound(room.hostId, room.code, oldRound);
+  expect(() => store.submitGuess(guessers[0].id, room.code, "鲸鱼", oldRound, "winner")).toThrow("ROUND_STATE_INVALID");
+});
 it("preserves long strokes and more than 240 strokes, undoing a whole stroke", () => {
   const room = setup();
   for (let i = 0; i < 6; i++) store.addStroke(room.round.drawerId, room.code, stroke("long", i * 128, 128), room.round.id, room.canvasEpoch);
@@ -21,6 +38,14 @@ it("preserves long strokes and more than 240 strokes, undoing a whole stroke", (
   store.undoStroke(room.round.drawerId, room.code, room.round.id, epoch);
   expect(room.canvas).toHaveLength(241);
   expect(() => store.addStroke(room.round.drawerId, room.code, stroke("stale"), room.round.id, epoch)).toThrow("CANVAS_CHANGED");
+});
+it("does not enqueue another judgement when a host-judged guess is retried", () => {
+  const room = setup("host-judged");
+  store.submitPrompt(room.round.prompterId, room.code, "咖啡", room.round.id);
+  const guesser = room.players.find((player) => ![room.round.drawerId, room.round.prompterId].includes(player.id));
+  store.submitGuess(guesser.id, room.code, "咖啡", room.round.id, "retry");
+  store.submitGuess(guesser.id, room.code, "咖啡", room.round.id, "retry");
+  expect(room.messages.filter((message) => message.status === "pending")).toHaveLength(1);
 });
 it("rejects mismatched offsets and exceeded budgets without removing earlier artwork", () => {
   const room = setup();
