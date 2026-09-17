@@ -2,7 +2,7 @@
 
 ## 目标与范围
 
-沿用 React / Express / ws / SQLite，完成审阅报告的修复、测试、审查；每批在 codex/ 分支工作，清晰提交，审查通过后本地合并 main。用户已授权本地提交、合并和部署到 codex@170.106.190.20；尚未推送 GitHub。
+沿用 React / Express / ws / SQLite，完成审阅报告的修复、测试、审查；每批在 codex/ 分支工作，清晰提交，审查通过后本地合并 main。用户已授权本地提交、合并和部署到 codex@170.106.190.20；用户已明确授权最终推送 GitHub。
 
 ## 批次
 
@@ -36,4 +36,4 @@
 
 VPS 首次安装旧 better-sqlite3 需要 g++ 而服务器没有，切换到内置 N-API 二进制的 13.0.3。一次本地验证过早在 npm install 完成前开始，出现临时缺失 binding，待安装完成后完整重跑通过。
 
-- [in_progress] 7. 修正单字谜底提示泄露，回归两种模式，部署并将最终 main 推送 origin。
+- [complete] 7. 修正单字谜底提示泄露，回归两种模式，部署并将最终 main 推送 origin。
