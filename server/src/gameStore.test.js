@@ -3,8 +3,8 @@ import { GameStore } from "./gameStore.js";
 import { config } from "./config.js";
 
 const stores = [];
-function setup(mode = "library", count = 3) {
-  const store = new GameStore({ getPacks: () => [{ id: "pack", status: "approved", words: ["火箭"] }] });
+function setup(mode = "library", count = 3, word = "火箭") {
+  const store = new GameStore({ getPacks: () => [{ id: "pack", status: "approved", words: [word] }] });
   stores.push(store);
   for (let i = 0; i < count; i++) store.createSession(`p${i}`, `t${i}`);
   const room = store.createRoom({ playerId: "p0", name: "测试", mode, packIds: [] });
@@ -14,6 +14,27 @@ function setup(mode = "library", count = 3) {
 afterEach(() => { stores.splice(0).forEach((store) => store.dispose()); vi.useRealTimers(); });
 
 describe("room and round invariants", () => {
+  it.each([
+    ["library", "山", "·"],
+    ["host-judged", "山", "·"],
+    ["library", "𠮷", "·"],
+    ["host-judged", "𠮷", "·"],
+    ["library", "火箭", "火·"],
+    ["host-judged", "𠮷野", "𠮷·"],
+  ])("protects the %s hint for %s while preserving role access", (mode, word, hint) => {
+    const { store, room } = setup(mode, 3, word);
+    store.startRound("p0", room.code, room.round.id);
+    const { drawerId, prompterId, id } = room.round;
+    if (prompterId) store.submitPrompt(prompterId, room.code, word, id);
+    const guesser = room.players.find(player => ![drawerId, prompterId].includes(player.id)).id;
+    const view = store.serializeRoomFor(guesser, room.code);
+    expect(view.round.word).toBeNull();
+    expect(view.round.maskedWord).toBe(hint);
+    expect(store.serializeRoomFor(drawerId, room.code).round.word).toBe(word);
+    if (prompterId) expect(store.serializeRoomFor(prompterId, room.code).round.word).toBe(word);
+    store.skipRound("p0", room.code, id);
+    expect(store.serializeRoomFor(guesser, room.code).round.word).toBe(word);
+  });
   it("rejects nonmember guesses and private room reads", () => {
     const { store, room } = setup();
     store.startRound("p0", room.code, room.round.id);

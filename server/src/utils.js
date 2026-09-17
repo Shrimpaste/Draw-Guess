@@ -20,6 +20,12 @@ export function canonicalWord(text) {
   return normalizeText(text).toLowerCase();
 }
 
+export function maskWord(word) {
+  // Count Unicode characters rather than UTF-16 units, including rare Han characters.
+  const characters = Array.from(word);
+  return characters.length > 1 ? `${characters[0]}${"·".repeat(characters.length - 1)}` : "·";
+}
+
 export function weightedPick(candidates, recentIds = []) {
   const recentSet = new Set(recentIds);
   const scored = candidates.map((candidate) => ({

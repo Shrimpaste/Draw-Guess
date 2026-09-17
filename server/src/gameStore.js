@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import { config } from "./config.js";
-import { canonicalWord, generateRoomCode, normalizeText, weightedPick } from "./utils.js";
+import { canonicalWord, generateRoomCode, maskWord, normalizeText, weightedPick } from "./utils.js";
 
 function blankRound() {
   return {
@@ -257,7 +257,7 @@ export class GameStore {
     if (room.mode === "library") {
       const word = this.pickLibraryWord(room);
       nextRound.word = word;
-      nextRound.maskedWord = `${word[0]}${"·".repeat(Math.max(word.length - 1, 0))}`;
+      nextRound.maskedWord = maskWord(word);
     }
 
     room.round = nextRound;
@@ -281,7 +281,7 @@ export class GameStore {
       throw new Error("FORBIDDEN");
     }
     room.round.word = normalizeText(word);
-    room.round.maskedWord = `${room.round.word[0]}${"·".repeat(Math.max(room.round.word.length - 1, 0))}`;
+    room.round.maskedWord = maskWord(room.round.word);
     room.round.status = "active";
     room.round.startedAt = Date.now();
     this.scheduleRound(room, config.roundSeconds);
