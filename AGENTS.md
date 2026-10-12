@@ -9,6 +9,7 @@
 3. 读 [ARCHITECTURE](docs/ARCHITECTURE.md)：模型、数据流、协议与不能破坏的不变量。
 4. 读 [MAINTENANCE](docs/MAINTENANCE.md)：分支、测试、审查、文档及清洁规范。
 5. 涉及服务器再读 [DEPLOYMENT](docs/DEPLOYMENT.md)；涉及绘图性能再读 [LATENCY-RESULTS](docs/LATENCY-RESULTS.md)。
+6. 涉及 UI / 美术 / 产品文案再读 [ART-DIRECTION](docs/ART-DIRECTION.md)：美术候选基线、独立样例与文案硬性要求。
 
 先执行 `git status --short`、`git branch --show-current`、`git log -5 --oneline`。核对当前工作区修改归属，不能 reset / clean 掉用户改动。文档与源码有冲突时检查源码和测试，说明差异并更新对应文档，不依据旧聊天猜测。
 
@@ -19,6 +20,8 @@
 - 单实例、临时身份、内存房间与积分；SQLite 只持久化词包。不为没有需求的规模引入 Redis、微服务、路由或全局状态框架。
 - 主线稳定；新功能在 `codex/<topic>` 或 `feature/<topic>` 分支开发，不把整理任务扩展为重构或依赖升级。
 - UI 沿用暖纸 / 墨色 / 朱橙，基础件采用仓库内 shadcn 风格 JSX + Radix，游戏组件定制。保留组件来源 [NOTICE](client/src/components/ui/NOTICE.md)。
+- **产品文案硬性要求**：界面文案只承担操作、内容或状态表达。禁止解释性、自我描述、项目宣传式 slogan（如“朋友共用的纸上画室”），不得换成英文或其他语言继续使用同类表达；此要求持续适用于后续正式重构与替换。
+- **当前美术样例**：先在独立开发预览 `/__art`（中文，小赖字体默认、悠哉可切换）中确认候选 art baseline；样例不授权替换生产界面。字体 / 笔顺素材的来源、许可与重新生成方式，以及生产界面待替换的 slogan 清单，见 [ART-DIRECTION](docs/ART-DIRECTION.md)。
 
 ## 3. 关键入口
 

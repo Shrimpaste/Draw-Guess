@@ -1,6 +1,6 @@
 # InkMuse · 你画我猜
 
-给 2–10 位朋友的小画室。React + Express + WebSocket，单实例运行；SQLite 保存词包，房间、积分与临时身份保存在内存。
+支持 2–10 人的实时绘画猜词游戏。React + Express + WebSocket，单实例运行；SQLite 保存词包，房间、积分与临时身份保存在内存。
 
 [在线试玩](https://170.106.190.20) · [稳定版本与交接](docs/HANDOFF.md) · [Agent 接手指南](AGENTS.md)
 
@@ -54,6 +54,8 @@ npm audit --omit=dev --registry=https://registry.npmjs.org
 
 开发环境可访问 `/__ui`（基础控件）和 `/__game`（角色、慢请求及断线场景）；预览不连接实际比赛，也不进入生产构建。基础组件来源见 [NOTICE](client/src/components/ui/NOTICE.md)。
 
+`/__art` 为独立美术候选样例，以中文展示大厅、词包和对局等实际功能模块，通过本地状态模拟交互。它用于审阅未来替换方向，不连接实际服务、不作为正式美术定稿；字体来源、范围与文案要求见 [美术方向](docs/ART-DIRECTION.md)。
+
 画布聚焦支持 B 画笔、E 橡皮、Ctrl / ⌘ Z 撤销。猜词即时回显，Enter 发送；IME 组合期间不发送，等待确认时可写下一条。投稿草稿仅保留在当前页面，刷新或退出清除。
 
 ## 文档导航
@@ -67,5 +69,6 @@ npm audit --omit=dev --registry=https://registry.npmjs.org
 | [部署](docs/DEPLOYMENT.md) | VPS 路径、更新、回滚、备份及故障处理 |
 | [延迟证据](docs/LATENCY-RESULTS.md) | 同条件流量 / 延迟对照及测量限制 |
 | [UI 验收证据](docs/UI-ACCEPTANCE.md) | 2026-09-16 浏览器验收范围，非本轮真机证明 |
+| [美术方向](docs/ART-DIRECTION.md) | 独立美术候选样例、媒介与组件规则、产品文案硬性要求 |
 
 ![大厅视觉基线，2026-09-16 本地验收](docs/screenshots/ui-lobby-1440.png)
