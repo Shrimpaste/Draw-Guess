@@ -168,10 +168,9 @@
     pointer-events: none;
   }
 
-  /* Views arrive like a turned sheet: hinged on the left, settling flat. */
+  /* Only non-drawing views turn in; the live canvas must keep stable coordinates. */
   .entry,
-  .lobby,
-  .game-room {
+  .lobby {
     transform-origin: 0 50%;
     animation: page-turn 0.62s cubic-bezier(0.25, 0.7, 0.25, 1) backwards;
   }
@@ -806,6 +805,14 @@
     .site-header {
       min-height: 58px;
       gap: 8px;
+      flex-wrap: wrap;
+      padding-block: 6px;
+    }
+    .header-actions {
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      max-width: 100%;
+      margin-left: auto;
     }
     .brand i,
     .identity {

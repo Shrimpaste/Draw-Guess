@@ -233,23 +233,26 @@
     overflow: hidden;
   }
   .color-pencil {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
     width: 24px;
     height: 48px;
     padding: 0;
     border: 0;
     background: none;
     cursor: pointer;
-    transform: translateY(9px);
-    transition: transform 0.2s cubic-bezier(0.3, 0.7, 0.4, 1.4);
   }
   .color-pencil svg {
     width: 22px;
     height: 46px;
+    transform: translateY(9px);
+    transition: transform 0.2s cubic-bezier(0.3, 0.7, 0.4, 1.4);
   }
-  .color-pencil:hover {
+  .color-pencil:hover svg {
     transform: translateY(4px);
   }
-  .color-pencil[aria-pressed="true"] {
+  .color-pencil[aria-pressed="true"] svg {
     transform: translateY(-1px) rotate(-4deg);
   }
   .color-pencil:focus-visible {
@@ -594,7 +597,8 @@
   .message {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: baseline;
+    /* Equal line boxes keep rows on the rules despite different text sizes. */
+    align-items: start;
     gap: 0 10px;
     min-height: var(--rule-gap);
     padding: 0 2px;
@@ -681,10 +685,10 @@
     grid-column: 1 / -1;
     align-items: center;
     gap: 6px;
-    height: var(--rule-gap);
+    height: calc(var(--rule-gap) * 2);
   }
   .judge-actions .ui-button {
-    min-height: 28px;
+    min-height: 44px;
     padding-block: 0;
   }
   .message .field-error {
@@ -903,6 +907,33 @@
     font-size: 13px;
   }
 
+  @media (max-width: 740px), (pointer: coarse) {
+    .drawing-toolbar .ui-toggle {
+      width: 44px;
+      min-height: 44px;
+    }
+    .color-pencils {
+      max-width: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: none;
+    }
+    .color-pencil {
+      width: 44px;
+      min-height: 48px;
+    }
+    .width-dots button {
+      width: 44px;
+      height: 44px;
+      flex-shrink: 0;
+    }
+    @container (max-width: 470px) {
+      .width-dots {
+        order: 3;
+        flex-basis: 100%;
+      }
+    }
+  }
   @media (max-width: 1240px) {
     .play-layout {
       grid-template-columns: minmax(0, 1fr) minmax(290px, 320px);
