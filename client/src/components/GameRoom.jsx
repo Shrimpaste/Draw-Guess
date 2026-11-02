@@ -28,6 +28,9 @@ const reasons = {
 
 function WordClue({ round, drawer, prompter }) {
   const finished = round.status === "finished";
+  if (round.status === "active" && !drawer && !prompter) {
+    return <div className="word-clue word-clue-hidden" aria-hidden="true" />;
+  }
   if (round.word) {
     const label = finished ? "答案" : prompter ? "你出的词" : drawer ? "请画这个词" : "词语";
     return (
@@ -38,23 +41,6 @@ function WordClue({ round, drawer, prompter }) {
         ) : (
           <strong>{round.word}</strong>
         )}
-      </div>
-    );
-  }
-  if (round.maskedWord) {
-    const chars = Array.from(round.maskedWord);
-    return (
-      <div className="word-clue">
-        <span>提示</span>
-        <div className="clue-slots" role="group" aria-label={`提示，共 ${chars.length} 字`}>
-          {chars.map((char, index) =>
-            char === "·" ? (
-              <span key={index} className="clue-slot clue-slot-empty" aria-hidden="true" />
-            ) : (
-              <span key={index} className="clue-slot">{char}</span>
-            ),
-          )}
-        </div>
       </div>
     );
   }

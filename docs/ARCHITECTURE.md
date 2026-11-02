@@ -143,6 +143,7 @@ stroke id 标识整笔，offset 是已接收点数；猜词 ID 与这些字段�
 
 ## 6. 前端交互与样式
 
+- 当前生产界面对猜词者隐藏进行中的首字 / 字数提示，画师、出题者看词与结算公开答案保留；服务端 `maskedWord` 字段契约不变。
 - App 导航 busy 与 GameRoom 内动作分离。GuessComposer 的 in-flight 防重复但不禁止编辑下一条；IME 期间 Enter 不提交。
 - GameRoom 保存本地 sending / confirming / failed 回显。WS 的 clientGuessId 确认替换回显；HTTP 先失败、WS 后成功要消除旧错误。自动恢复的失败草稿仅在用户未再次编辑时清掉。
 - 猜词者、画师、出题者各显示相关操作；裁定局逐条 pending，不能按数组最后一项裁定。

@@ -961,6 +961,9 @@
     }
   }
   @media (max-width: 860px) {
+    .word-clue-hidden {
+      display: none;
+    }
     .game-room {
       gap: 10px;
       padding-top: 10px;
