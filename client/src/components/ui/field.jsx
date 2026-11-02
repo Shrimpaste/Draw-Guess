@@ -1,13 +1,9 @@
-// Input styling adapted from shadcn/ui (MIT), see NOTICE.md.
+// Field composition adapted from shadcn/ui (MIT), see NOTICE.md.
 import { forwardRef, useId } from "react";
 import { cn } from "./utils.js";
 
-const fieldStyle =
-  "ui-input flex w-full min-w-0 rounded-lg border border-input bg-background px-3 text-base shadow-xs transition-colors placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-55 md:text-sm";
 export const Input = forwardRef(function Input({ className, ...props }, ref) {
-  return (
-    <input ref={ref} className={cn(fieldStyle, "h-11", className)} {...props} />
-  );
+  return <input ref={ref} className={cn("ui-input", className)} {...props} />;
 });
 export const Textarea = forwardRef(function Textarea(
   { className, ...props },
@@ -16,7 +12,7 @@ export const Textarea = forwardRef(function Textarea(
   return (
     <textarea
       ref={ref}
-      className={cn(fieldStyle, "min-h-24 py-3", className)}
+      className={cn("ui-input ui-textarea", className)}
       {...props}
     />
   );

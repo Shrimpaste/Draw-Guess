@@ -32,17 +32,17 @@ it("validates unique word count, focuses errors, and keeps failed submissions ed
   fireEvent.change(screen.getByLabelText("词包名称"), {
     target: { value: "水果" },
   });
-  fireEvent.change(screen.getByLabelText("一句话介绍"), {
+  fireEvent.change(screen.getByLabelText("介绍"), {
     target: { value: "适合热身的水果词包" },
   });
-  fireEvent.change(screen.getByLabelText("收集一些词语"), {
+  fireEvent.change(screen.getByLabelText("词语"), {
     target: { value: "苹果,苹果,苹果,苹果" },
   });
   fireEvent.click(screen.getByRole("button", { name: "提交审核" }));
   expect(screen.getByRole("alert")).toHaveTextContent("不同词语");
-  expect(screen.getByLabelText("收集一些词语")).toHaveFocus();
+  expect(screen.getByLabelText("词语")).toHaveFocus();
   expect(onSubmit).not.toHaveBeenCalled();
-  fireEvent.change(screen.getByLabelText("收集一些词语"), {
+  fireEvent.change(screen.getByLabelText("词语"), {
     target: { value: "苹果,香蕉,西瓜,葡萄" },
   });
   fireEvent.click(screen.getByRole("button", { name: "提交审核" }));
@@ -50,7 +50,7 @@ it("validates unique word count, focuses errors, and keeps failed submissions ed
     expect(screen.getByRole("alert")).toHaveTextContent("同名词包"),
   );
   expect(screen.getByLabelText("词包名称")).toHaveValue("水果");
-  expect(screen.getByLabelText("收集一些词语")).toBeEnabled();
+  expect(screen.getByLabelText("词语")).toBeEnabled();
 });
 it("preserves the draft after Escape and reopening", async () => {
   render(<Harness onSubmit={vi.fn()} />);

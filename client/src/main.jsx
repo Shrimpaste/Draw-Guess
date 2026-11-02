@@ -5,7 +5,11 @@ import "./styles.css";
 import "./ui.css";
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
-if (import.meta.env.DEV && location.pathname === "/__game") {
+if (import.meta.env.DEV && location.pathname === "/__art") {
+  import("./dev/art/ArtBaseline.jsx").then(({ default: Preview }) =>
+    root.render(<Preview />),
+  );
+} else if (import.meta.env.DEV && location.pathname === "/__game") {
   import("./dev/GamePreview.jsx").then(({ default: Preview }) =>
     root.render(<Preview />),
   );
@@ -15,4 +19,3 @@ if (import.meta.env.DEV && location.pathname === "/__game") {
   );
 } else root.render(<App />);
 import "./game-ui.css";
-import "./lobby-ui.css";

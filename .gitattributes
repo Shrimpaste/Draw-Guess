@@ -1,6 +1,7 @@
 * text=auto
 *.js text eol=lf
 *.jsx text eol=lf
+*.mjs text eol=lf
 *.css text eol=lf
 *.html text eol=lf
 *.json text eol=lf
@@ -10,3 +11,6 @@
 *.sh text eol=lf
 *.service text eol=lf
 *.timer text eol=lf
+# Third-party license texts are kept byte-for-byte.
+ARPHICPL.TXT -whitespace
+*-OFL.txt -whitespace

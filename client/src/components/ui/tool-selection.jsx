@@ -1,6 +1,7 @@
 // Radix compositions for the on-demand drawing tools. See NOTICE.md.
 import * as SliderPrimitive from "@radix-ui/react-slider";
 import * as TogglePrimitive from "@radix-ui/react-toggle-group";
+import { SketchMark } from "./sketch-mark.jsx";
 export function Slider({ label, ...props }) {
   return (
     <SliderPrimitive.Root className="ui-slider" {...props}>
@@ -38,6 +39,7 @@ export function ToggleGroup({
         >
           {Icon && <Icon size={18} aria-hidden="true" />}
           <span>{title}</span>
+          <SketchMark variant="underline" />
         </TogglePrimitive.Item>
       ))}
     </TogglePrimitive.Root>

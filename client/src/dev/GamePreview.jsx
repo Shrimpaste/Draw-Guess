@@ -56,7 +56,7 @@ export default function GamePreview() {
   const [canvas, setCanvas] = useState(sample),
     [epoch, setEpoch] = useState(0),
     [messages, setMessages] = useState([
-      { id: "welcome", type: "system", text: "第 3 回合开始，灵感已经就位。" },
+      { id: "welcome", type: "system", text: "第 3 轮开始" },
       {
         id: "guess1",
         type: "guess",
@@ -69,7 +69,7 @@ export default function GamePreview() {
     [endsAt, setEndsAt] = useState(Date.now() + 100000);
   const room = {
     code: "INK24",
-    name: "周末的灵感小屋",
+    name: "周末速写",
     mode: "host-judged",
     hostId: "你",
     me: { id: "你" },
@@ -149,12 +149,13 @@ export default function GamePreview() {
       <div className="app-shell in-room">
         <header className="site-header">
           <a className="brand" href="/__ui">
-            ink<span>muse</span>
+            <span>InkMuse</span>
             <i>你画我猜</i>
           </a>
           <span
             className={`connection connection-${online ? "online" : "reconnecting"}`}
           >
+            <i aria-hidden="true" />
             {online ? "已连接" : "正在重连"}
           </span>
         </header>

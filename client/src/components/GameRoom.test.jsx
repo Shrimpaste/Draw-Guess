@@ -140,6 +140,22 @@ it.each([false, true])("clears a failed-send warning when confirmation arrives l
   expect(screen.getByLabelText("你的答案")).toHaveValue(newDraft ? "月亮" : "");
   expect(screen.getAllByText("火箭")).toHaveLength(1);
 });
+it.each(["火·", "·", "𠮷·"])("hides the active guesser's hint and word length for %s", (maskedWord) => {
+  render(<GameRoom room={{ ...baseRoom, round: { ...baseRoom.round, maskedWord } }} connection="online" />);
+  expect(screen.queryByText("提示")).not.toBeInTheDocument();
+  expect(screen.queryByRole("group", { name: /提示，共/ })).not.toBeInTheDocument();
+  expect(document.querySelector(".clue-slots")).toBeNull();
+  expect(screen.getByText("轮到你猜")).toBeInTheDocument();
+});
+it.each([
+  ["drawer", "active", "请画这个词"],
+  ["host", "active", "你出的词"],
+  ["guess", "finished", "答案"],
+])("keeps the word visible to %s in the %s round", (viewer, status, label) => {
+  render(<GameRoom room={{ ...baseRoom, me: { id: viewer }, round: { ...baseRoom.round, status, word: "火箭" } }} connection="online" />);
+  expect(screen.getByText(label)).toBeInTheDocument();
+  expect(screen.getByText("火箭")).toBeInTheDocument();
+});
 it("judges the selected pending guess by id and exposes round results", () => {
   const onJudge = vi.fn();
   const room = {

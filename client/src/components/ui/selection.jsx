@@ -1,7 +1,8 @@
 // Adapted from shadcn/ui primitives (MIT), see NOTICE.md.
 import * as RadioPrimitive from "@radix-ui/react-radio-group";
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
-import { Check } from "lucide-react";
+import { SketchIcon } from "./sketch-icon.jsx";
+import { SketchMark } from "./sketch-mark.jsx";
 
 export function RadioCards({ value, onValueChange, options, label, disabled }) {
   return (
@@ -12,12 +13,18 @@ export function RadioCards({ value, onValueChange, options, label, disabled }) {
       aria-label={label}
       disabled={disabled}
     >
-      {options.map(({ value: option, title, description }) => (
+      {options.map(({ value: option, title, description, art }) => (
         <RadioPrimitive.Item
           className="ui-radio-card"
           value={option}
           key={option}
         >
+          {art && (
+            <span className="radio-art" aria-hidden="true">
+              {art}
+              <SketchMark />
+            </span>
+          )}
           <span className="radio-title">
             {title}
             <span className="radio-dot">
@@ -40,7 +47,7 @@ export function Checkbox({ label, ...props }) {
       {...props}
     >
       <CheckboxPrimitive.Indicator>
-        <Check size={14} />
+        <SketchIcon name="check" size={15} />
       </CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>
   );

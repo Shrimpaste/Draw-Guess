@@ -1,10 +1,13 @@
 import { useState } from "react";
-import { Pencil, Eraser, Undo2 } from "lucide-react";
+import { SketchIcon } from "../components/ui/sketch-icon.jsx";
 import { Button } from "../components/ui/button.jsx";
 import { Field, Input } from "../components/ui/field.jsx";
 import { Modal } from "../components/ui/overlay.jsx";
 import { Popover } from "../components/ui/tool-overlays.jsx";
 import { Slider, ToggleGroup } from "../components/ui/tool-selection.jsx";
+
+const PenIcon = (props) => <SketchIcon name="pen" {...props} />;
+const EraserIcon = (props) => <SketchIcon name="eraser" {...props} />;
 
 export default function UiPreview() {
   const [tool, setTool] = useState("pen"),
@@ -16,9 +19,8 @@ export default function UiPreview() {
   return (
     <main className="ui-preview">
       <header>
-        <span className="eyebrow">INKMUSE · 组件交互样板</span>
-        <h1>落笔之前，先试试手感。</h1>
-        <p className="muted">开发预览 · 不连接游戏服务器</p>
+        <span className="meta">开发预览 · 不连接游戏服务器</span>
+        <h1>基础控件</h1>
       </header>
       <section className="preview-panel">
         <div className="preview-controls preview-tools">
@@ -27,8 +29,8 @@ export default function UiPreview() {
             value={tool}
             onValueChange={setTool}
             options={[
-              { value: "pen", label: "画笔", icon: Pencil },
-              { value: "eraser", label: "橡皮", icon: Eraser },
+              { value: "pen", label: "画笔", icon: PenIcon },
+              { value: "eraser", label: "橡皮", icon: EraserIcon },
             ]}
           />
           <Popover
@@ -44,7 +46,7 @@ export default function UiPreview() {
             />
           </Popover>
           <Button variant="ghost" size="icon" aria-label="撤销" disabled>
-            <Undo2 />
+            <SketchIcon name="undo" />
           </Button>
         </div>
         <div
@@ -52,9 +54,8 @@ export default function UiPreview() {
             minHeight: 220,
             display: "grid",
             placeItems: "center",
-            background: "#fffdf9",
-            borderRadius: 12,
-            border: "1px solid #e6ddd1",
+            background: "#fbf8f0",
+            borderRadius: 2,
           }}
         >
           <svg
@@ -65,7 +66,7 @@ export default function UiPreview() {
           >
             <g
               fill="none"
-              stroke="#51473d"
+              stroke="#504936"
               strokeWidth="3"
               strokeLinecap="round"
             >
@@ -91,7 +92,7 @@ export default function UiPreview() {
                 {...props}
                 value={guess}
                 onChange={(e) => setGuess(e.target.value)}
-                placeholder="这是……一杯咖啡？"
+                placeholder="输入答案"
               />
             )}
           </Field>
@@ -108,10 +109,10 @@ export default function UiPreview() {
       <Modal
         open={open}
         onOpenChange={setOpen}
-        title="每个灵感，都值得被接住。"
-        description="弹窗支持键盘导航、Escape 关闭和焦点返回。"
+        title="弹窗"
+        description="Tab 切换焦点，Esc 关闭并返回触发按钮。"
       >
-        <Field label="给你的画室起个名字">
+        <Field label="房间名称">
           {(props) => <Input {...props} placeholder="午后速写室" />}
         </Field>
         <footer className="ui-dialog-footer">

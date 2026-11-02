@@ -4,8 +4,11 @@ import { GuessComposer } from "./GuessComposer.jsx";
 import { GuessFeed } from "./GuessFeed.jsx";
 import { Button } from "./ui/button.jsx";
 import { ConfirmAction } from "./ui/overlay.jsx";
+import { SketchIcon } from "./ui/sketch-icon.jsx";
+import { InkWord, inkLayout } from "./ink/InkWord.jsx";
+import { inkLabels } from "./ink/labels.js";
 import { errorText } from "../errors.js";
-import { Copy, Check, Timer, Trophy, Users } from "lucide-react";
+import { sfx } from "../sound.js";
 import { PlayerStrip } from "./PlayerStrip.jsx";
 import { Input } from "./ui/field.jsx";
 
@@ -17,11 +20,67 @@ const statuses = {
   finished: "本轮结束",
 };
 const reasons = {
-  guessed: "猜中了！",
-  timeout: "时间到",
-  skipped: "房主结束本轮",
-  "player-left": "玩家离开，本轮结束",
+  guessed: inkLabels.guessed,
+  timeout: inkLabels.timeout,
+  skipped: inkLabels.skipped,
+  "player-left": inkLabels.left,
 };
+
+function WordClue({ round, drawer, prompter }) {
+  const finished = round.status === "finished";
+  if (round.status === "active" && !drawer && !prompter) {
+    return <div className="word-clue word-clue-hidden" aria-hidden="true" />;
+  }
+  if (round.word) {
+    const label = finished ? "答案" : prompter ? "你出的词" : drawer ? "请画这个词" : "词语";
+    return (
+      <div className={`word-clue ${finished ? "word-answer" : "word-open"}`}>
+        <span>{label}</span>
+        {finished && inkLayout(round.word) ? (
+          <strong><InkWord text={round.word} /></strong>
+        ) : (
+          <strong>{round.word}</strong>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="word-clue word-none">
+      <span>词语</span>
+      <strong>{round.status === "collecting-word" ? "出题中" : "—"}</strong>
+    </div>
+  );
+}
+
+const RING = 2 * Math.PI * 21;
+function TimerRing({ seconds, total }) {
+  if (seconds === null)
+    return (
+      <span className="timer timer-idle" role="timer" aria-label="尚未计时">
+        <SketchIcon name="clock" size={26} />
+      </span>
+    );
+  const urgent = seconds <= 15;
+  return (
+    <span className={`timer ${urgent ? "timer-urgent" : ""}`} role="timer" aria-label={`剩余 ${seconds} 秒`}>
+      <svg viewBox="0 0 52 52" aria-hidden="true">
+        <circle className="timer-track" cx="26" cy="26" r="21" />
+        <circle
+          className="timer-ink"
+          cx="26"
+          cy="26"
+          r="21"
+          strokeDasharray={RING}
+          strokeDashoffset={RING * (1 - seconds / total)}
+          transform="rotate(-90 26 26)"
+        />
+      </svg>
+      <strong key={seconds <= 10 ? seconds : "steady"} aria-hidden="true">
+        {seconds}
+      </strong>
+    </span>
+  );
+}
 
 export function GameRoom({
   room,
@@ -57,6 +116,7 @@ export function GameRoom({
   }, [confirmedGuesses, room.round.id]);
   const submitGuess = useCallback(async (text, id) => {
     const roundId = room.round.id;
+    sfx.tap();
     setLocalGuesses((previous) => [...previous.filter((guess) => guess.id !== id), { id, text, roundId, status: "sending" }]);
     try {
       if ((await onGuess(text, id)) === false) throw new Error("发送失败，请稍后重试。");
@@ -73,6 +133,10 @@ export function GameRoom({
       throw error;
     }
   }, [onGuess, room.round.id]);
+  const judge = useCallback((id, accepted) => {
+    sfx.stamp();
+    return onJudge(id, accepted);
+  }, [onJudge]);
   const stroke = useCallback((value) => onCanvas("canvas:stroke", value), [onCanvas]);
   const clear = useCallback(() => onCanvas("canvas:clear"), [onCanvas]);
   const undo = useCallback(() => onCanvas("canvas:undo"), [onCanvas]);
@@ -103,6 +167,24 @@ export function GameRoom({
   const { round, me } = room;
   const online = connection === "online";
   const disabled = busy || !online;
+
+  // Cues follow authoritative transitions only; the state seen on entering a room is silent.
+  const heard = useRef(null);
+  useEffect(() => {
+    const accepted = new Set(room.messages.filter((message) => message.status === "accepted").map((message) => message.id));
+    const previous = heard.current;
+    heard.current = { roundId: round.id, status: round.status, accepted };
+    if (!previous) return;
+    const freshAccept = [...accepted].some((id) => !previous.accepted.has(id));
+    if (freshAccept) sfx.correct();
+    if (previous.roundId === round.id && previous.status === round.status) return;
+    if (round.status === "active") sfx.start();
+    else if (round.status === "finished") {
+      if (round.reason === "guessed" && !freshAccept) sfx.correct();
+      if (round.reason === "timeout") sfx.timeUp();
+    }
+  }, [room.messages, round.id, round.status, round.reason]);
+
   async function runRound(task) {
     if (roundInFlight.current) return;
     const submittedRound = room.round.id;
@@ -125,28 +207,50 @@ export function GameRoom({
   const prompter = round.prompterId === me.id;
   const host = room.hostId === me.id;
   const running = ["active", "collecting-word"].includes(round.status);
+  const finished = round.status === "finished";
   const minimum = room.mode === "host-judged" ? 3 : 2;
+  const total = round.status === "collecting-word" ? 30 : 100;
   const seconds = round.endsAt
-    ? Math.min(
-        round.status === "collecting-word" ? 30 : 100,
-        Math.max(0, Math.ceil((round.endsAt - now) / 1000)),
-      )
+    ? Math.min(total, Math.max(0, Math.ceil((round.endsAt - now) / 1000)))
     : null;
-  const role = drawer
-    ? "你是画师"
-    : prompter
-      ? "你来出题与裁定"
-      : round.viewerIsGuesser
-        ? "轮到你猜"
-        : "一起等开局";
+  const tick = useRef(null);
+  useEffect(() => {
+    if (round.status !== "active" || seconds === null || seconds > 10 || seconds <= 0) {
+      tick.current = null;
+      return;
+    }
+    if (tick.current !== null && tick.current !== seconds) (seconds <= 3 ? sfx.urgentTick : sfx.tick)();
+    tick.current = seconds;
+  }, [seconds, round.status]);
+
+  const headline = running
+    ? round.status === "collecting-word"
+      ? prompter ? inkLabels.prompt : inkLabels.waitPrompt
+      : drawer ? inkLabels.draw : prompter ? inkLabels.judge : round.viewerIsGuesser ? inkLabels.guess : inkLabels.drawing
+    : finished
+      ? reasons[round.reason] || inkLabels.finished
+      : room.players.length < minimum
+        ? `还差 ${minimum - room.players.length} 人`
+        : host ? inkLabels.ready : inkLabels.waitHost;
+  const scoreLine = Object.entries(round.scoreChanges || {})
+    .filter(([, score]) => score > 0)
+    .map(([id, score]) => `${id} +${score}`)
+    .join(" · ");
+  const roleHint = finished
+    ? null
+    : drawer
+      ? round.status === "collecting-word" ? "出题后开始计时" : "画出词语，不要写字"
+      : prompter
+        ? round.status === "collecting-word" ? "写下词语后开始作画" : "逐条裁定猜词"
+        : running ? "等待下一轮" : "开局后在这里猜词";
   return (
-    <main className="game-room">
+    <main className={`game-room status-${round.status} ${drawer ? "me-drawer" : ""}`}>
       <header className="room-heading">
-        <div>
-          <span className="eyebrow">
+        <div className="room-title">
+          <h1>{room.name}</h1>
+          <span className="meta">
             {modes[room.mode]} · {room.players.length} / 10 人
           </span>
-          <h1>{room.name}</h1>
         </div>
         <Button
           variant="outline"
@@ -164,8 +268,9 @@ export function GameRoom({
           }}
           aria-label={`复制房间码 ${room.code}`}
         >
-          {copied ? <Check /> : <Copy />} {copied ? "已复制 " : "房间码 "}
+          <span className="room-code-label">{copied ? "已复制" : "房间码"}</span>
           <strong>{room.code}</strong>
+          <SketchIcon name={copied ? "check" : "copy"} />
         </Button>
       </header>
       {copyError && (
@@ -173,117 +278,75 @@ export function GameRoom({
           复制失败，请手动复制房间码：{room.code}
         </p>
       )}
-      <section
-        className={`round-bar round-${round.status}`}
-        aria-label="回合状态"
-      >
-        <div>
-          <span className="eyebrow">
-            第 {round.number} 轮 · {statuses[round.status]}
+      <section className="round-strip" aria-label="回合状态">
+        <div className="round-state">
+          <span className="meta">
+            {round.number ? `第 ${round.number} 轮` : "未开局"} · {statuses[round.status]}
           </span>
-          <strong>
-            {running
-              ? role
-              : round.status === "finished"
-                ? reasons[round.reason] || "本轮结束"
-                : room.players.length < minimum
-                  ? `再来 ${minimum - room.players.length} 位朋友就能开局`
-                  : host
-                    ? "朋友到齐，随时开始"
-                    : "等房主开启这一轮"}
+          <strong className={`round-headline ${finished && round.reason === "guessed" ? "is-correct" : ""}`}>
+            <InkWord text={headline} />
           </strong>
         </div>
-        <div className="word-clue">
-          <span>
-            {round.word
-              ? round.status === "finished"
-                ? "答案"
-                : prompter
-                  ? "你出的词"
-                  : "请画这个词"
-              : "线索"}
-          </span>
-          <strong>{round.word || round.maskedWord || "等一个灵感"}</strong>
-        </div>
-        <span
-          className={`timer ${seconds !== null && seconds <= 15 ? "timer-urgent" : ""}`}
-          aria-label={seconds === null ? "尚未计时" : `剩余 ${seconds} 秒`}
-        >
-          {seconds === null ? (
-            <Users size={20} />
-          ) : (
-            <>
-              <Timer size={17} />
-              <span>
-                {seconds}
-                <small>秒</small>
-              </span>
-            </>
-          )}
-        </span>
-        {host &&
-          (running ? (
-            <ConfirmAction
-              title="提前结束这一轮？"
-              description="本轮会结束并公布答案，不会计分。"
-              confirmText="结束本轮"
-              onConfirm={() => runRound(onSkip)}
-            >
-              <Button variant="ghost" disabled={disabled || roundBusy}>
-                结束本轮
+        <WordClue round={round} drawer={drawer} prompter={prompter} />
+        <TimerRing seconds={seconds} total={total} />
+        <div className="round-action">
+          {host ? (
+            running ? (
+              <ConfirmAction
+                title="提前结束这一轮？"
+                description="本轮会结束并公布答案，不会计分。"
+                confirmText="结束本轮"
+                onConfirm={() => runRound(onSkip)}
+              >
+                <Button variant="ghost" disabled={disabled || roundBusy}>
+                  结束本轮
+                </Button>
+              </ConfirmAction>
+            ) : (
+              <Button
+                disabled={disabled || room.players.length < minimum}
+                pending={roundBusy}
+                onClick={() => runRound(onStart)}
+              >
+                {round.number ? "再来一轮" : "开始游戏"}
+                <SketchIcon name="arrow" />
               </Button>
-            </ConfirmAction>
+            )
           ) : (
-            <Button
-              disabled={disabled || room.players.length < minimum}
-              pending={roundBusy}
-              onClick={() => runRound(onStart)}
-            >
-              {round.number ? "再来一轮" : "开始游戏"}
-            </Button>
-          ))}
+            !drawer && <span className="round-wait">{running ? `${round.drawerId || "画师"} 作画` : "等房主开局"}</span>
+          )}
+        </div>
         {roundError && (
-          <p className="field-error" role="alert">
+          <p className="field-error round-error" role="alert">
             {roundError}
           </p>
         )}
       </section>
-      {round.status === "finished" && (
-        <div className="round-result" role="status">
-          <Trophy size={19} />
-          <p>
-            <strong>
-              {Object.entries(round.scoreChanges || {})
-                .filter(([, score]) => score > 0)
-                .map(([id, score]) => `${id} +${score}`)
-                .join(" · ") || "这一轮没有得分，下一轮再试试"}
-            </strong>
-            <span>
-              {host
-                ? "准备好后，点击「再来一轮」。"
-                : "画作已留下，等房主开启下一轮。"}
-            </span>
-          </p>
-        </div>
-      )}
       <div className="play-layout">
-        <CanvasBoard
-          room={room}
-          isDrawer={drawer && round.status === "active" && online}
-          onStroke={stroke}
-          onClear={clear}
-          onUndo={undo}
-        />
+        <PlayerStrip room={room} />
+        <div className="stage-column">
+          <CanvasBoard
+            room={room}
+            isDrawer={drawer && round.status === "active" && online}
+            onStroke={stroke}
+            onClear={clear}
+            onUndo={undo}
+          />
+          {finished && (
+            <div className="result-slip" role="status" key={round.id}>
+              <SketchIcon name={scoreLine ? "star" : "clock"} size={22} />
+              <p>
+                <strong>{scoreLine || "本轮无人得分"}</strong>
+                <span>{host ? "点「再来一轮」开始" : "等房主开下一轮"}</span>
+              </p>
+            </div>
+          )}
+        </div>
         <section className="guess-panel" aria-label="猜词与裁定">
+          <span className="notebook-rings" aria-hidden="true" />
           <header>
-            <h2>{prompter ? "出题与裁定" : "灵感接力"}</h2>
-            <small>
-              {round.viewerIsGuesser
-                ? "大胆猜，猜错也没关系"
-                : drawer
-                  ? "用画面表达，别写出答案"
-                  : "看画，也看大家的脑洞"}
-            </small>
+            <h2>{prompter ? "出题与裁定" : "猜词"}</h2>
+            <small>{room.messages.filter((message) => message.type === "guess").length + pendingGuesses.length} 条</small>
           </header>
           {round.status === "collecting-word" && prompter && (
             <form
@@ -309,15 +372,16 @@ export function GameRoom({
                 }
               }}
             >
-              <label>
-                本轮词语
+              <label className="ui-field">
+                <span>本轮词语</span>
                 <Input
                   required
                   maxLength={28}
                   value={prompt}
                   disabled={promptBusy}
+                  autoComplete="off"
                   onChange={(event) => setPrompt(event.target.value)}
-                  placeholder="给画师一个灵感"
+                  placeholder="1–28 字"
                 />
               </label>
               {promptError && (
@@ -339,7 +403,7 @@ export function GameRoom({
             localGuesses={pendingGuesses}
             canJudge={prompter && round.status === "active"}
             disabled={disabled}
-            onJudge={onJudge}
+            onJudge={judge}
           />
           {round.viewerIsGuesser ? (
             <GuessComposer
@@ -349,19 +413,10 @@ export function GameRoom({
               confirmedGuessIds={confirmedGuesses}
             />
           ) : (
-            <div className="role-hint">
-              {round.status === "finished"
-                ? "画作先留着，等下一次灵感。"
-                : drawer
-                  ? "你负责画，朋友们负责脑洞。"
-                  : prompter
-                    ? "观察大家的答案，及时给出裁定。"
-                    : "朋友到齐后，就可以开始了。"}
-            </div>
+            roleHint && <p className="role-hint">{roleHint}</p>
           )}
         </section>
       </div>
-      <PlayerStrip room={room} />
     </main>
   );
 }
