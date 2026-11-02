@@ -1,11 +1,16 @@
-// Rebuilds the /__art Chinese assets from a local UI-lab checkout:
+// Rebuilds the Chinese type assets from a local UI-lab checkout:
 //   node scripts/build-art-assets.mjs --lab D:\burn-token\UI-lab
 // Fonts: subsets of UI-lab's full Xiaolai / Yozai WOFF2 (SIL OFL 1.1, glyphs unchanged).
 // Strokes: ordered medians from hanzi-writer-data (Arphic Public License).
 // Tools are resolved from the UI-lab checkout so this repository gains no dependency.
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+//
+// Production: xiaolai-ui (characters in the production source, loaded first) and
+// xiaolai-text (GB2312 level 1 for typed names, rooms and guesses, fetched only when
+// the UI subset lacks a character). Stroke medians cover components/ink/labels.js only.
+// /__art: Yozai subset and its own medians; its Xiaolai face reuses xiaolai-text.
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -20,13 +25,26 @@ const subsetFont = labRequire("subset-font");
 const hanziDir = dirname(labRequire.resolve("hanzi-writer-data/package.json"));
 const hanziVersion = JSON.parse(readFileSync(join(hanziDir, "package.json"), "utf8")).version;
 
-const artDir = join(root, "client", "src", "dev", "art");
-const sources = readdirSync(artDir)
-  .filter((name) => /\.(js|jsx)$/.test(name) && !name.includes(".test."))
-  .map((name) => readFileSync(join(artDir, name), "utf8"))
-  .join("");
+const clientSrc = join(root, "client", "src");
+const artDir = join(clientSrc, "dev", "art");
+const inkDir = join(clientSrc, "components", "ink");
+const fontDir = join(clientSrc, "assets", "fonts");
+
+function walk(dir) {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    return statSync(path).isDirectory() ? walk(path) : [path];
+  });
+}
+const sourceFile = (path) => /\.(js|jsx)$/.test(path) && !path.includes(".test.") && !path.endsWith("hanzi-medians.js");
+const read = (paths) => paths.map((path) => readFileSync(path, "utf8")).join("");
+const artSources = read(readdirSync(artDir).map((name) => join(artDir, name)).filter(sourceFile));
+const productionSources = read(walk(clientSrc).filter((path) => sourceFile(path) && !path.includes(`${sep}dev${sep}`)));
+const labelSources = readFileSync(join(inkDir, "labels.js"), "utf8");
+
 const han = /[\u3400-\u9fff\uf900-\ufaff]/u;
-const demoHan = [...new Set([...sources].filter((char) => han.test(char)))].sort();
+const hanIn = (text) => [...new Set([...text].filter((char) => han.test(char)))].sort();
+const symbolsIn = (text) => [...text].filter((char) => char.codePointAt(0) > 127 && !han.test(char) && char.trim());
 
 // GB2312 level 1 (3755 common characters) covers typical typed guesses, names and words.
 const decoder = new TextDecoder("gb18030");
@@ -37,48 +55,50 @@ for (let high = 0xb0; high <= 0xd7; high += 1) {
     common.push(decoder.decode(new Uint8Array([high, low])));
   }
 }
-const fontChars = new Set([...demoHan, ...common]);
-for (let code = 32; code < 127; code += 1) fontChars.add(String.fromCharCode(code));
-for (const char of "·…—–‘’“”、。，：；！？（）【】《》「」『』％＋－×÷→←↑↓⌘") fontChars.add(char);
-for (const char of sources) if (char.codePointAt(0) > 127 && !han.test(char) && char.trim()) fontChars.add(char);
-const text = [...fontChars].join("");
+const basics = [];
+for (let code = 32; code < 127; code += 1) basics.push(String.fromCharCode(code));
+basics.push(..."·…—–‘’“”、。，：；！？（）【】《》「」『』％＋－×÷→←↑↓⌘");
 
-const fontOut = join(artDir, "fonts");
-mkdirSync(fontOut, { recursive: true });
-const fonts = [
-  ["xiaolai", "Xiaolai v3.126 (lxgw/kose-font)"],
-  ["yozai", "Yozai v0.868 (lxgw/yozai-font)"],
-];
-const fontReport = [];
-for (const [id] of fonts) {
-  const input = join(lab, "fonts", `${id}.woff2`);
-  const output = join(fontOut, `${id}-art.woff2`);
-  const buffer = await subsetFont(readFileSync(input), text, { targetFormat: "woff2" });
+const uiChars = new Set([...basics, ...hanIn(productionSources), ...symbolsIn(productionSources)]);
+const textChars = new Set([...uiChars, ...common, ...hanIn(artSources), ...symbolsIn(artSources)]);
+
+async function subset(input, chars, output) {
+  const buffer = await subsetFont(readFileSync(input), [...chars].join(""), { targetFormat: "woff2" });
   writeFileSync(output, buffer);
-  copyFileSync(join(lab, "fonts", `${id}-OFL.txt`), join(fontOut, `${id}-OFL.txt`));
-  fontReport.push(`${id}: ${(buffer.length / 1024).toFixed(0)} kB`);
+  return `${output.slice(root.length + 1)} ${chars.size} chars ${(buffer.length / 1024).toFixed(0)} kB`;
 }
+mkdirSync(fontDir, { recursive: true });
+mkdirSync(join(artDir, "fonts"), { recursive: true });
+const report = [
+  await subset(join(lab, "fonts", "xiaolai.woff2"), uiChars, join(fontDir, "xiaolai-ui.woff2")),
+  await subset(join(lab, "fonts", "xiaolai.woff2"), textChars, join(fontDir, "xiaolai-text.woff2")),
+  await subset(join(lab, "fonts", "yozai.woff2"), textChars, join(artDir, "fonts", "yozai-art.woff2")),
+];
+copyFileSync(join(lab, "fonts", "xiaolai-OFL.txt"), join(fontDir, "xiaolai-OFL.txt"));
+copyFileSync(join(lab, "fonts", "yozai-OFL.txt"), join(artDir, "fonts", "yozai-OFL.txt"));
 
-const medians = {};
-const missing = [];
-for (const char of demoHan) {
-  const file = join(hanziDir, `${char}.json`);
-  if (!existsSync(file)) {
-    missing.push(char);
-    continue;
+function writeMedians(chars, outDir, scope) {
+  const medians = {};
+  const missing = [];
+  for (const char of chars) {
+    const file = join(hanziDir, `${char}.json`);
+    if (!existsSync(file)) {
+      missing.push(char);
+      continue;
+    }
+    medians[char] = JSON.parse(readFileSync(file, "utf8")).medians.map((stroke) => stroke.flat().map(Math.round));
   }
-  medians[char] = JSON.parse(readFileSync(file, "utf8")).medians.map((stroke) => stroke.flat().map(Math.round));
-}
-const generated = join(artDir, "generated");
-mkdirSync(generated, { recursive: true });
-copyFileSync(join(hanziDir, "ARPHICPL.TXT"), join(generated, "ARPHICPL.TXT"));
-writeFileSync(join(generated, "hanzi-medians.js"), `/* Modified Hanzi Writer stroke data (Arphic Public License, see ARPHICPL.TXT).
+  mkdirSync(outDir, { recursive: true });
+  copyFileSync(join(hanziDir, "ARPHICPL.TXT"), join(outDir, "ARPHICPL.TXT"));
+  writeFileSync(join(outDir, "hanzi-medians.js"), `/* Modified Hanzi Writer stroke data (Arphic Public License, see ARPHICPL.TXT).
  * Generated by scripts/build-art-assets.mjs from hanzi-writer-data ${hanziVersion} / Make Me a Hanzi:
- * selected the ${Object.keys(medians).length} characters used by /__art, kept ordered stroke medians only,
+ * selected the ${Object.keys(medians).length} characters used by ${scope}, kept ordered stroke medians only,
  * rounded coordinates (1024 box, y up) and packed them as flat arrays. Do not edit by hand.
  */
 export const hanziMedians = ${JSON.stringify(medians)};
 `);
-
-console.log(`fonts (${fontChars.size} chars): ${fontReport.join(", ")}`);
-console.log(`medians: ${Object.keys(medians).length} characters; missing: ${missing.join("") || "none"}`);
+  return `${scope}: ${Object.keys(medians).length} characters; missing: ${missing.join("") || "none"}`;
+}
+report.push(writeMedians(hanIn(artSources), join(artDir, "generated"), "/__art"));
+report.push(writeMedians(hanIn(labelSources), inkDir, "components/ink/labels.js"));
+console.log(report.join("\n"));

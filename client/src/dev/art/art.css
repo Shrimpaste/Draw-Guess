@@ -1,7 +1,7 @@
 /* /__art study only. Every rule is scoped to .art-app so production styles stay untouched. */
 @font-face {
   font-family: "InkMuse Art Hand A";
-  src: url("./fonts/xiaolai-art.woff2") format("woff2");
+  src: url("../../assets/fonts/xiaolai-text.woff2") format("woff2");
   font-display: swap;
 }
 @font-face {
