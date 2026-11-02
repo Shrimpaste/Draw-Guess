@@ -1,4 +1,5 @@
 import request from "supertest";
+import { gzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "./createApp.js";
 import { config } from "./config.js";
@@ -17,6 +18,30 @@ beforeEach(() => {
 afterEach(() => app.get("store").dispose());
 
 describe("session and rooms", () => {
+  it("rejects corrupt compressed bodies and remains available for the next request", async () => {
+    const compressed = gzipSync(JSON.stringify({ preferredId: "Compressed" }));
+    const response = await request(app).post("/api/session")
+      .set("Content-Type", "application/json")
+      .set("Content-Encoding", "gzip")
+      .send(Buffer.concat([compressed, Buffer.from("trailing bytes")]));
+    expect(response.status).toBe(500);
+    expect(response.body.error).toBe("Internal server error");
+    expect((await request(app).get("/api/health")).status).toBe(200);
+  });
+
+  it("rejects oversized word collections without persisting a submission", async () => {
+    const user = await createSession("CollectionCheck");
+    const auth = { Authorization: `Bearer ${user.token}`, "x-admin-key": "test-admin-key" };
+    const before = await request(app).get("/api/admin/packs").set(auth);
+    const response = await request(app).post("/api/packs").set(auth).send({
+      name: "超量词包", description: "验证词语数量的边界校验", words: Array(4096).fill(null),
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("Invalid pack payload");
+    const after = await request(app).get("/api/admin/packs").set(auth);
+    expect(after.body.packs).toEqual(before.body.packs);
+  });
+
   it("uses an isolated database and requires explicit admin credentials", async () => {
     expect(config.databasePath).toBe(":memory:");
     const user = await createSession("AdminCheck");
