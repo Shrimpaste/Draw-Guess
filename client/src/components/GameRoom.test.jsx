@@ -140,6 +140,14 @@ it.each([false, true])("clears a failed-send warning when confirmation arrives l
   expect(screen.getByLabelText("你的答案")).toHaveValue(newDraft ? "月亮" : "");
   expect(screen.getAllByText("火箭")).toHaveLength(1);
 });
+it("shows the guesser one slot per character with only the server hint filled", () => {
+  render(<GameRoom room={baseRoom} connection="online" />);
+  const clue = screen.getByRole("group", { name: "提示，共 2 字" });
+  expect(clue).toHaveTextContent("火");
+  expect(clue.querySelectorAll(".clue-slot")).toHaveLength(2);
+  expect(clue.querySelectorAll(".clue-slot-empty")).toHaveLength(1);
+  expect(screen.getByText("轮到你猜")).toBeInTheDocument();
+});
 it("judges the selected pending guess by id and exposes round results", () => {
   const onJudge = vi.fn();
   const room = {

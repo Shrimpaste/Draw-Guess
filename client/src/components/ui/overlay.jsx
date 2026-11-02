@@ -1,7 +1,7 @@
 // Composition adapted from shadcn/ui Dialog / Popover / AlertDialog (MIT).
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import * as AlertPrimitive from "@radix-ui/react-alert-dialog";
-import { X } from "lucide-react";
+import { SketchIcon } from "./sketch-icon.jsx";
 import { useRef } from "react";
 import { Button } from "./button.jsx";
 import { cn } from "./utils.js";
@@ -39,6 +39,7 @@ export function Modal({
           }}
           {...(!description ? { "aria-describedby": undefined } : {})}
         >
+          <span className="paper-tape" aria-hidden="true" />
           <header className="ui-dialog-header">
             <DialogPrimitive.Title>{title}</DialogPrimitive.Title>
             {description && (
@@ -55,7 +56,7 @@ export function Modal({
               className="dialog-close"
               aria-label="关闭弹窗"
             >
-              <X />
+              <SketchIcon name="close" />
             </Button>
           </DialogPrimitive.Close>
         </DialogPrimitive.Content>
@@ -77,6 +78,7 @@ export function ConfirmAction({
       <AlertPrimitive.Portal>
         <AlertPrimitive.Overlay className="ui-overlay" />
         <AlertPrimitive.Content className="ui-dialog ui-confirm">
+          <span className="paper-tape" aria-hidden="true" />
           <header className="ui-dialog-header">
             <AlertPrimitive.Title>{title}</AlertPrimitive.Title>
             <AlertPrimitive.Description>

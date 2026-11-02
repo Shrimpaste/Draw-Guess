@@ -1,7 +1,15 @@
 import { memo, useEffect, useRef, useState } from "react";
-import { ArrowDown, Check, X } from "lucide-react";
 import { Button } from "./ui/button.jsx";
+import { SketchIcon } from "./ui/sketch-icon.jsx";
 import { errorText } from "../errors.js";
+
+const guessStates = {
+  pending: "待裁定",
+  rejected: "未猜中",
+  accepted: "猜中了",
+  closed: "已结束",
+};
+const localStates = { sending: "发送中…", confirming: "等待同步…", failed: "未确认送达，请重试" };
 
 function JudgeActions({ message, disabled, onJudge }) {
   const [pending, setPending] = useState(false),
@@ -28,12 +36,13 @@ function JudgeActions({ message, disabled, onJudge }) {
         <Button
           size="sm"
           variant="secondary"
+          className="judge-accept"
           pending={pending}
           disabled={disabled}
           onClick={() => judge(true)}
           aria-label={`判定 ${message.playerId} 的 ${message.text} 正确`}
         >
-          <Check />
+          <SketchIcon name="check" />
           猜对了
         </Button>
         <Button
@@ -43,7 +52,7 @@ function JudgeActions({ message, disabled, onJudge }) {
           onClick={() => judge(false)}
           aria-label={`判定 ${message.playerId} 的 ${message.text} 错误`}
         >
-          <X />
+          <SketchIcon name="close" />
           还不对
         </Button>
       </div>
@@ -72,6 +81,7 @@ export const GuessFeed = memo(function GuessFeed({ room, localGuesses = noLocalG
     else if (newest !== last.current) setUnread(true);
     last.current = newest;
   }, [room.messages, localGuesses]);
+  const empty = !room.messages.length && !localGuesses.length;
   return (
     <div className="feed-wrap">
       <div
@@ -85,27 +95,22 @@ export const GuessFeed = memo(function GuessFeed({ room, localGuesses = noLocalG
           if (pinned.current) setUnread(false);
         }}
       >
+        {empty && <p className="feed-empty">暂无猜词</p>}
         {room.messages.map((message) => (
           <div
             className={`message message-${message.type} message-${message.status || "info"} ${message.playerId === room.me.id ? "message-mine" : ""}`}
             key={message.id}
           >
-            {message.playerId && (
+            {message.playerId && message.type === "guess" && (
               <strong>
                 {message.playerId === room.me.id ? "我" : message.playerId}
               </strong>
             )}
-            <span>{message.text}</span>
+            <span className="message-text">{message.text}</span>
             {message.type === "guess" && (
-              <small>
-                {
-                  {
-                    pending: "待裁定",
-                    rejected: "未猜中",
-                    accepted: "猜中了",
-                    closed: "已结束",
-                  }[message.status]
-                }
+              <small className="message-state">
+                {message.status === "accepted" && <SketchIcon name="check" size={18} className="drawn" />}
+                {guessStates[message.status]}
               </small>
             )}
             {canJudge && message.status === "pending" && (
@@ -120,8 +125,8 @@ export const GuessFeed = memo(function GuessFeed({ room, localGuesses = noLocalG
         {localGuesses.map((guess) => (
           <div key={guess.id} className={`message message-guess message-mine message-${guess.status}`}>
             <strong>我</strong>
-            <span>{guess.text}</span>
-            <small>{{ sending: "发送中…", confirming: "等待同步…", failed: "未确认送达，请重试" }[guess.status]}</small>
+            <span className="message-text">{guess.text}</span>
+            <small className="message-state">{localStates[guess.status]}</small>
           </div>
         ))}
       </div>
@@ -136,8 +141,8 @@ export const GuessFeed = memo(function GuessFeed({ room, localGuesses = noLocalG
             ref.current.scrollTop = ref.current.scrollHeight;
           }}
         >
-          <ArrowDown />
           新消息
+          <SketchIcon name="arrow" className="turn-down" />
         </Button>
       )}
     </div>

@@ -5,6 +5,10 @@ import { errorText } from "./errors.js";
 import { Button } from "./components/ui/button.jsx";
 import { ConfirmAction } from "./components/ui/overlay.jsx";
 import { Input } from "./components/ui/field.jsx";
+import { SketchIcon } from "./components/ui/sketch-icon.jsx";
+import { InkWord } from "./components/ink/InkWord.jsx";
+import { inkLabels } from "./components/ink/labels.js";
+import { setSoundEnabled, unlockSound, useSoundEnabled } from "./sound.js";
 import { Toaster, toast } from "sonner";
 const Lobby = lazy(() =>
   import("./components/Lobby.jsx").then((module) => ({
@@ -26,6 +30,16 @@ const PackAdmin = lazy(() =>
     default: module.PackAdmin,
   })),
 );
+const DemoSketch = lazy(() =>
+  import("./components/DemoSketch.jsx").then((module) => ({
+    default: module.DemoSketch,
+  })),
+);
+const HowToPlay = lazy(() =>
+  import("./components/HowToPlay.jsx").then((module) => ({
+    default: module.HowToPlay,
+  })),
+);
 const emptyDraft = { name: "", description: "", words: "" };
 
 function savedSession() {
@@ -43,6 +57,41 @@ const connectionLabels = {
   offline: "未连接",
 };
 
+function Brand() {
+  return (
+    <a className="brand" href="/" aria-label="InkMuse 首页">
+      <svg viewBox="0 0 36 40" aria-hidden="true">
+        <path d="M6 31 22 4l8 4.5L14 36 6 31Z" fill="#bc9244" />
+        <path d="M22 4l8 4.5-2.4 4-8-4.4Z" fill="#ad5541" />
+        <path d="m6 31-2.4 7.4 8.6-2.6M22 4l8 4.5M9.6 32.6 25.4 6.3" stroke="#504936" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M17 36.5q7-8.6 15.5-3.4" stroke="#ad5541" fill="none" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+      <span>InkMuse</span>
+      <i>你画我猜</i>
+    </a>
+  );
+}
+
+function SoundToggle() {
+  const enabled = useSoundEnabled();
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="sound-toggle"
+      aria-label="声音"
+      aria-pressed={enabled}
+      title={enabled ? "声音：开" : "声音：关"}
+      onClick={() => {
+        unlockSound();
+        setSoundEnabled(!enabled);
+      }}
+    >
+      <SketchIcon name={enabled ? "sound" : "mute"} size={22} />
+    </Button>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState(savedSession);
   const [preferredId, setPreferredId] = useState("");
@@ -57,6 +106,7 @@ export default function App() {
   const [packDraft, setPackDraft] = useState(emptyDraft);
   const inFlight = useRef(false);
   const [dialog, setDialog] = useState(null);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const {
     player,
     room,
@@ -83,6 +133,20 @@ export default function App() {
   useEffect(() => {
     setError("");
   }, [room?.code]);
+  useEffect(() => {
+    // Browsers only allow audio after a gesture; the first press anywhere unlocks it.
+    const unlock = () => {
+      unlockSound();
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock);
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
   async function gameAction(task) {
     applyResponse(await task(), session?.token);
     return true;
@@ -115,22 +179,31 @@ export default function App() {
   const disabled = !!busy || connection !== "online";
   const feedback = error || errorText(connectionError);
   return (
-    <div className={`app-shell ${room ? "in-room" : ""}`}>
+    <div className={`app-shell ${room ? "in-room" : session ? "in-lobby" : "at-entry"}`}>
       <header className="site-header">
-        <a className="brand" href="/" aria-label="InkMuse 首页">
-          ink<span>muse</span>
-          <i>你画我猜</i>
-        </a>
-        {session && (
-          <div className="header-actions">
-            <span
-              className={`connection connection-${connection}`}
-              role="status"
-            >
-              {connectionLabels[connection]}
-            </span>
-            <span className="identity">{player?.id || session.id}</span>
-            {room &&
+        <Brand />
+        <div className="header-actions">
+          {session && (
+            <>
+              <span
+                className={`connection connection-${connection}`}
+                role="status"
+              >
+                <i aria-hidden="true" />
+                {connectionLabels[connection]}
+              </span>
+              <span className="identity" title="当前昵称">
+                {player?.id || session.id}
+              </span>
+            </>
+          )}
+          <Button variant="ghost" className="header-rules" onClick={() => setRulesOpen(true)}>
+            <SketchIcon name="help" />
+            <span className="label-text">玩法</span>
+          </Button>
+          <SoundToggle />
+          {session &&
+            (room &&
             ["active", "collecting-word"].includes(room.round.status) ? (
               <ConfirmAction
                 title="离开正在进行的对局？"
@@ -138,14 +211,15 @@ export default function App() {
                 confirmText="离开房间"
                 onConfirm={() => mutate(() => api.leaveRoom(session.token))}
               >
-                <Button variant="outline" disabled={busy}>
+                <Button variant="outline" disabled={!!busy}>
+                  <SketchIcon name="leave" />
                   返回大厅
                 </Button>
               </ConfirmAction>
             ) : (
               <Button
                 variant="outline"
-                disabled={busy}
+                disabled={!!busy}
                 onClick={() =>
                   room
                     ? mutate(() => api.leaveRoom(session.token))
@@ -155,15 +229,15 @@ export default function App() {
                       })
                 }
               >
+                <SketchIcon name="leave" />
                 {room ? "返回大厅" : "退出"}
               </Button>
-            )}
-          </div>
-        )}
+            ))}
+        </div>
       </header>
       {feedback && (
         <div className="feedback feedback-error" role="alert">
-          {feedback}
+          <span>{feedback}</span>
           <button
             type="button"
             onClick={() => {
@@ -176,82 +250,52 @@ export default function App() {
         </div>
       )}
       {!session ? (
-        <main className="login-layout">
-          <section className="login-intro">
-            <span className="eyebrow">一支画笔，一群朋友</span>
+        <main className="entry">
+          <section className="entry-slip paper-sheet">
+            <span className="paper-tape" aria-hidden="true" />
             <h1>
-              画得随意，
-              <br />
-              猜得尽兴<span>。</span>
+              <InkWord text={inkLabels.enter} />
             </h1>
-            <p>
-              让灵感落在纸上，
-              <br />
-              让朋友接住你的奇思妙想。
-            </p>
-            <div className="ink-sketch" aria-hidden="true">
-              <svg viewBox="0 0 380 170" fill="none">
-                <path
-                  d="M24 120Q56 70 106 105T199 90T310 94M244 39l48-19-9 46-39-27ZM55 37q-6-17 10-21t15 16l-8 21-17-16Z"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                  strokeLinecap="round"
+            <form
+              className="stack"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                await mutate(async () => {
+                  const result = await api.createSession(
+                    preferredId.trim() || undefined,
+                  );
+                  setSession(result.player);
+                });
+              }}
+            >
+              <label className="ui-field">
+                <span>昵称</span>
+                <Input
+                  pattern="[\p{L}\p{N}\s_\-]+"
+                  maxLength={18}
+                  value={preferredId}
+                  onChange={(event) => setPreferredId(event.target.value)}
+                  placeholder="留空自动取名"
+                  autoComplete="nickname"
                 />
-                <circle
-                  cx="330"
-                  cy="133"
-                  r="19"
-                  stroke="#ff5b36"
-                  strokeWidth="5"
-                />
-                <path
-                  d="m157 28 7 19 20 1-16 13 4 20-17-12-17 11 6-20-15-14 20 1Z"
-                  stroke="#ff5b36"
-                  strokeWidth="3"
-                />
-              </svg>
-            </div>
-            <small>2–10 人 · 无需注册 · 一起玩一会儿</small>
+                <small className="field-hint">中英文、数字、空格、下划线或短横线</small>
+              </label>
+              <Button type="submit" size="lg" pending={!!busy}>
+                {busy ? "正在连接…" : "进入"}
+                {!busy && <SketchIcon name="arrow" />}
+              </Button>
+            </form>
+            <p className="entry-meta">临时身份只保存在本浏览器 · 断线后保留 60 秒</p>
           </section>
-          <form
-            className="login-form stack"
-            onSubmit={async (event) => {
-              event.preventDefault();
-              await mutate(async () => {
-                const result = await api.createSession(
-                  preferredId.trim() || undefined,
-                );
-                setSession(result.player);
-              });
-            }}
-          >
-            <span className="eyebrow">很高兴见到你</span>
-            <h2>进入大厅</h2>
-            <label>
-              怎么称呼你？
-              <Input
-                pattern="[\p{L}\p{N}\s_\-]+"
-                maxLength={18}
-                value={preferredId}
-                onChange={(event) => setPreferredId(event.target.value)}
-                placeholder="留空也可以，帮你取个名字"
-                autoComplete="nickname"
-              />
-            </label>
-            <small>支持中英文、数字、空格、下划线与短横线。</small>
-            <Button type="submit" pending={!!busy}>
-              {busy ? "正在连接…" : "开始玩 →"}
-            </Button>
-            <p className="muted">
-              临时身份保存在当前浏览器。离开后断线保留 60 秒。
-            </p>
-          </form>
+          <Suspense fallback={<div className="demo" aria-hidden="true" />}>
+            <DemoSketch onRules={() => setRulesOpen(true)} />
+          </Suspense>
         </main>
       ) : room ? (
         <Suspense
           fallback={
             <main className="page-loading" role="status">
-              画室正在准备中…
+              正在进入房间…
             </main>
           }
         >
@@ -307,6 +351,11 @@ export default function App() {
           />
         </Suspense>
       )}
+      {rulesOpen && (
+        <Suspense fallback={null}>
+          <HowToPlay open onOpenChange={setRulesOpen} />
+        </Suspense>
+      )}
       <Suspense
         fallback={
           <p className="feedback" role="status">
@@ -326,7 +375,7 @@ export default function App() {
               );
               setDialog(null);
               setPackDraft(emptyDraft);
-              toast.success("投稿成功，审核通过后大家就可以选用这个词包了。");
+              toast.success("已提交，审核通过后可在建房时选用。");
             }}
           />
         )}

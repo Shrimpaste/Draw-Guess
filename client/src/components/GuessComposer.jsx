@@ -1,8 +1,8 @@
 import { memo, useEffect, useRef, useState } from "react";
-import { ArrowUp, RotateCcw } from "lucide-react";
 import { errorText } from "../errors.js";
 import { Input } from "./ui/field.jsx";
 import { Button } from "./ui/button.jsx";
+import { SketchIcon } from "./ui/sketch-icon.jsx";
 
 export const GuessComposer = memo(function GuessComposer({ roundId, online, onGuess, confirmedGuessIds }) {
   const [draft, setDraft] = useState("");
@@ -71,7 +71,7 @@ export const GuessComposer = memo(function GuessComposer({ roundId, online, onGu
           maxLength={28}
           autoComplete="off"
           enterKeyHint="send"
-          placeholder={online ? "这是……？" : "重连中，可以先写下答案"}
+          placeholder={online ? "输入答案" : "重连中，可以先写下答案"}
           onChange={(event) => {
             edits.current++;
             setDraft(event.target.value);
@@ -95,11 +95,12 @@ export const GuessComposer = memo(function GuessComposer({ roundId, online, onGu
         <Button
           type="submit"
           size="icon"
+          className="send-button"
           aria-label={pending ? "正在发送" : "发送"}
           pending={pending}
           disabled={!online || !draft.trim()}
         >
-          {!pending && <ArrowUp />}
+          {!pending && <SketchIcon name="send" />}
         </Button>
       </form>
       {failure ? (
@@ -116,16 +117,16 @@ export const GuessComposer = memo(function GuessComposer({ roundId, online, onGu
             disabled={!online || pending}
             onClick={() => submit(failure.value)}
           >
-            <RotateCcw />
+            <SketchIcon name="refresh" />
             重试
           </Button>
         </div>
       ) : (
         <p id="guess-hint" className="composer-hint">
           {pending
-            ? "正在发送，可以继续输入下一条"
+            ? "正在发送，可继续输入下一条"
             : online
-              ? "Enter 发送 · 猜错也没关系"
+              ? "Enter 发送"
               : "连接恢复后再发送"}
         </p>
       )}

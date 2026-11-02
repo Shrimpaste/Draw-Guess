@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DrawingToolbar, palette } from "./DrawingToolbar.jsx";
+import { pencilScratch } from "../sound.js";
 
 export function drawStroke(context, stroke) {
   if (!stroke?.points?.length) return;
@@ -36,6 +37,8 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
   const timerRef = useRef(null);
   const frameRef = useRef(null);
   const resetPendingRef = useRef(false);
+  const scratchRef = useRef(null);
+  const lastMoveRef = useRef(null);
   const [waitingForReset, setWaitingForReset] = useState(false);
   const canDraw = isDrawer && !waitingForReset;
   const confirmed = useMemo(() => new Map(room.canvas.map((stroke) => [stroke.id, stroke.points.length])), [room.canvas]);
@@ -43,7 +46,7 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
   latest.current = { room, isDrawer, onStroke, confirmed };
   const [tool, setTool] = useState({
     color: palette[0][0],
-    width: 5,
+    width: 6,
     tool: "pen",
   });
 
@@ -73,7 +76,12 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
       paint();
     });
   }
+  function quietPencil() {
+    scratchRef.current?.end();
+    scratchRef.current = null;
+  }
   function discardLocal() {
+    quietPencil();
     clearInterval(timerRef.current);
     activeRef.current = null;
     localRef.current.clear();
@@ -132,6 +140,7 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
   ]);
   useEffect(
     () => () => {
+      quietPencil();
       clearInterval(timerRef.current);
       cancelAnimationFrame(frameRef.current);
     },
@@ -200,6 +209,9 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
     };
     activeRef.current = stroke;
     localRef.current.set(stroke.id, stroke);
+    quietPencil();
+    scratchRef.current = pencilScratch(tool.tool);
+    lastMoveRef.current = { ...stroke.points[0], at: performance.now() };
     flush();
     requestPaint();
     if (activeRef.current) timerRef.current = setInterval(flush, 25);
@@ -211,6 +223,9 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
       last = stroke.points.at(-1);
     if (Math.hypot(next.x - last.x, next.y - last.y) < 0.5) return;
     stroke.points.push(next);
+    const now = performance.now(), previous = lastMoveRef.current;
+    if (previous) scratchRef.current?.move(Math.hypot(next.x - previous.x, next.y - previous.y) / Math.max(4, now - previous.at));
+    lastMoveRef.current = { ...next, at: now };
     if (stroke.points.length - stroke.sent >= 128) flush();
     requestPaint();
   }
@@ -222,6 +237,7 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
     )
       return;
     flush();
+    quietPencil();
     activeRef.current = null;
     clearInterval(timerRef.current);
     if (canvasRef.current.hasPointerCapture?.(stroke.pointerId))
@@ -244,7 +260,7 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
 
   return (
     <section
-      className="surface-panel canvas-shell"
+      className="canvas-shell"
       aria-label="画布与工具"
       onKeyDown={(event) => {
         if (
@@ -288,17 +304,25 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
         />
       ) : (
         <div className="watching-label">
-          {room.round.status === "finished" ? "本轮画作" : "灵感正在纸上发生"}
-          <span>INKMUSE CANVAS</span>
+          <span>
+            {room.round.status === "finished"
+              ? "本轮画作"
+              : room.round.status === "active" && room.round.drawerId
+                ? `${room.round.drawerId} 正在画`
+                : "画布"}
+          </span>
+          {room.round.number > 0 && <span className="paper-no">No. {String(room.round.number).padStart(3, "0")}</span>}
         </div>
       )}
-      <div className="canvas-stage">
+      <div className={`canvas-stage ${canDraw ? "is-drawable" : ""} ${waitingForReset ? "is-syncing" : ""}`}>
+        <span className="paper-tape tape-left" aria-hidden="true" />
+        <span className="paper-tape tape-right" aria-hidden="true" />
         <canvas
           ref={canvasRef}
           aria-label="绘画画布"
           tabIndex={isDrawer ? 0 : undefined}
           aria-busy={waitingForReset}
-          className={`board ${canDraw ? "board-drawable" : ""}`}
+          className={`board ${canDraw ? "board-drawable" : ""} ${canDraw && tool.tool === "eraser" ? "board-erasing" : ""}`}
           width={960 * pixelRatio}
           height={620 * pixelRatio}
           style={{
@@ -311,19 +335,15 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
           onPointerCancel={finish}
           onLostPointerCapture={finish}
         />
-        {["waiting", "collecting-word"].includes(room.round.status) && (
+        {["waiting", "collecting-word"].includes(room.round.status) && !room.canvas.length && (
           <div className="canvas-placeholder" aria-hidden="true">
-            <span>✳</span>
-            <strong>
-              {room.round.status === "waiting"
-                ? "好画，从相聚开始"
-                : "给灵感一点时间"}
-            </strong>
-            <p>
-              {room.round.status === "waiting"
-                ? "邀请朋友加入，把第一笔留给你们。"
-                : "出题者正在想一个词，马上开始。"}
-            </p>
+            <svg viewBox="0 0 120 70" fill="none" strokeLinecap="round" strokeLinejoin="round">
+              <path className="draw" d="M14 52c14-20 26-22 34-8s20 12 28-6 22-16 30-4" stroke="#ad5541" strokeWidth="2.4" pathLength="1" style={{ "--at": "0.15s", "--len": "0.9s" }} />
+              <path d="m78 14 22-9 4 9-22 9Z" fill="#bc9244" stroke="#504936" strokeWidth="1.4" />
+              <path d="m78 14-5 9 9 0" stroke="#504936" strokeWidth="1.4" />
+            </svg>
+            <strong>{room.round.status === "waiting" ? "等待开局" : "出题中"}</strong>
+            <p>{room.round.status === "waiting" ? "人齐后由房主开局" : "词语确定后开始作画"}</p>
           </div>
         )}
       </div>
@@ -331,10 +351,12 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
         {waitingForReset
           ? "正在同步画布，请稍候…"
           : isDrawer
-            ? "轮到你画了 · 画笔实时同步，支持触摸绘制"
+            ? "B 画笔 · E 橡皮 · Ctrl / ⌘ Z 撤销"
             : room.round.status === "finished"
-              ? "本轮画作 · 下一轮开始前会一直保留"
-              : "看画面，猜一个词"}
+              ? "画作保留到下一轮开始"
+              : room.round.status === "active"
+                ? "看画猜词"
+                : ""}
       </p>
     </section>
   );

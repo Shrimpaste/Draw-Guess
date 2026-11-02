@@ -19,4 +19,3 @@ if (import.meta.env.DEV && location.pathname === "/__art") {
   );
 } else root.render(<App />);
 import "./game-ui.css";
-import "./lobby-ui.css";

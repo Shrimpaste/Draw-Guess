@@ -33,7 +33,7 @@ export function PackSubmission({ draft, onDraftChange, onClose, onSubmit }) {
   return (
     <Modal
       title="投稿词包"
-      description="分享适合画出来的词，审核通过后，大家都能选用。"
+      description="审核通过后可在建房时选用。"
       onOpenChange={(open) => {
         if (!open && !busy) onClose();
       }}
@@ -100,7 +100,7 @@ export function PackSubmission({ draft, onDraftChange, onClose, onSubmit }) {
         </Field>
         <Field
           id="pack-description"
-          label="一句话介绍"
+          label="介绍"
           hint={`${draft.description.length}/120 字 · 至少 8 字`}
           error={fields.description}
         >
@@ -112,13 +112,13 @@ export function PackSubmission({ draft, onDraftChange, onClose, onSubmit }) {
               maxLength={120}
               rows={2}
               disabled={busy}
-              placeholder="这是一个什么主题的词包？"
+              placeholder="主题、适合的人群或难度"
             />
           )}
         </Field>
         <Field
           id="pack-words"
-          label="收集一些词语"
+          label="词语"
           hint={`${words.length}/32 个不同词语${duplicates ? ` · 已自动合并 ${duplicates} 个重复词` : ""} · 每行一个或逗号分隔`}
           error={fields.words}
         >
@@ -140,7 +140,7 @@ export function PackSubmission({ draft, onDraftChange, onClose, onSubmit }) {
           </p>
         )}
         <p className="draft-note">
-          暂时关闭也没关系，草稿会保留到退出登录或刷新页面。
+          关闭后草稿仍保留，刷新或退出时清除。
         </p>
         <footer className="ui-dialog-footer">
           <Button variant="outline" onClick={onClose} disabled={busy}>
@@ -180,7 +180,7 @@ export function PackAdmin({ token, onClose, onChanged }) {
   return (
     <Modal
       title="词包审核"
-      description="审核适合大家一起画、一起猜的词语。"
+      description="读取待审核投稿，通过后发布到大厅。"
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
@@ -212,12 +212,12 @@ export function PackAdmin({ token, onClose, onChanged }) {
         </Button>
       </form>
       {error && (
-        <p role="alert" className="feedback-error">
+        <p role="alert" className="field-error">
           {error}
         </p>
       )}
       {packs && !packs.some((pack) => pack.status === "pending") && (
-        <p>没有待审核的投稿。</p>
+        <p className="empty-note">没有待审核的投稿。</p>
       )}
       {packs
         ?.filter((pack) => pack.status === "pending")
