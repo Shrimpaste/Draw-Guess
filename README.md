@@ -71,4 +71,4 @@ npm audit --omit=dev --registry=https://registry.npmjs.org
 | [UI 验收证据](docs/UI-ACCEPTANCE.md) | 2026-09-16 浏览器验收范围，非本轮真机证明 |
 | [美术方向](docs/ART-DIRECTION.md) | 独立美术候选样例、媒介与组件规则、产品文案硬性要求 |
 
-![大厅视觉基线，2026-09-16 本地验收](docs/screenshots/ui-lobby-1440.png)
+![大厅界面，2026-11-02 公网发布验收](docs/screenshots/ui-lobby-2026-11-02.jpg)

@@ -1,26 +1,42 @@
-# 稳定基线交接
+# 版本交接
 
-最后整理：2026-09-17。目标是让后续会话独立接手，不要求阅读旧聊天记录。
+最后更新：2026-11-02。目标是让后续会话独立接手，不要求阅读旧聊天记录。
 
 ## 基线身份
 
 | 项目 | 固定值 |
 |---|---|
-| 稳定标签 | `stable-base-2026-09-17`（本次整理后的 main，禁止移动） |
-| 已部署运行代码 | `e5c04ea` |
-| 整理前已推送主线 | `6947baa` |
+| 当前发布标签 | `release-2026-11-02-ui`（禁止移动） |
+| 已部署运行代码 | `a508ead` |
+| UI 合并提交 | `cb1e036`（`hand-UI-update` → main，no-ff） |
+| 历史稳定标签 | `stable-base-2026-09-17`（禁止移动） |
 | 在线入口 | https://170.106.190.20 |
-| 线上 release | `/srv/draw-guess/releases/e5c04ea` |
-| 主入口 JS（该构建） | `/assets/index-BgwZYHFz.js` |
-| 回滚候选 | `5717337`；优化前的 `87835b6` 也保留 |
+| 线上 release | `/srv/draw-guess/releases/a508ead` |
+| 主入口 JS（该构建） | `/assets/index-o_HoRO8x.js` |
+| 已保留回滚版本 | `e5c04ea` |
 
-稳定标签包含新的交接文档与清洁结果，应用代码、依赖锁、部署配置、测试和可复用脚本与 e5c04ea 相同。文档整理没有部署新应用或重启服务。后续不应因为 Git HEAD 与服务器目录名不同就重复部署：先对比实际运行文件。
+2026-11-02 用户确认本轮生产 UI 过关并授权合并部署；23:14（UTC+8）完成在线 SQLite 备份、再次确认 0 个房间后切换。当前发布包含纸墨 UI、移动端触控 / 画布入场修复，以及仅在客户端隐藏的局内猜词提示。服务端规则与协议保持原有契约。
+
+发布检查发现依赖审计阻塞，已更新 body-parser 1.20.9、qs 6.16.2 与 Zod 4.6.7；新增损坏压缩请求后服务仍可用、超量词语投稿不落库的回归检查。没有数据库迁移、配置或代理变更。后续仅文档提交可使 main 超前于运行代码，不能因此重复部署；应先核对实际运行文件与入口资源。
+
+### 本次发布验证
+
+- Windows / VPS Linux 的 103 项测试（服务端 36、客户端 67）、构建、VPS 十人隔离绘画 / 重连检查通过；生产依赖审计 0 漏洞。
+- [运行代码 GitHub CI](https://github.com/Shrimpaste/Draw-Guess/actions/runs/41469122637) 通过；VPS `validation.exit=0`。
+- 在线备份 unit `Result=success`，应用 / HTTPS 服务正常，公网 health、新入口 JS 与字体均返回 200。
+- 公网 3 人专用测试：160 点、一次重连、最终画布 / 结算一致，0 错误；测试身份和房间已清理。该测试不构成端到端延迟改善的对照证据。
+- Edge 公网进入大厅、WS 已连接、词包元信息和新界面加载通过，无控制台错误；[大厅截图](screenshots/ui-lobby-2026-11-02.jpg)。局内与窄屏组件验收见 [ART-DIRECTION](ART-DIRECTION.md)。
+- 手机真机、iOS Safari、软键盘 / 触笔与声音舒适度仍未验证。
+
+### 历史稳定基线
+
+`stable-base-2026-09-17` 包含当时的交接文档与清洁结果，应用代码、依赖锁、部署配置、测试和可复用脚本与 `e5c04ea` 相同；当时整理前主线是 `6947baa`，整理过程没有部署新应用或重启服务。
 
 ```sh
 git diff e5c04ea stable-base-2026-09-17 -- client server package.json package-lock.json scripts deploy .github
 ```
 
-该对比应为空。构建产物不进 Git；线上构建由对应 release 在 Linux 生成。新 feature 从更新后的 main 创建分支；需要重现此基线时使用稳定标签。
+该历史对比应为空。构建产物不进 Git；线上构建由对应 release 在 Linux 生成。新 feature 从更新后的 main 创建分支；需要重现旧基线时使用历史稳定标签。
 
 ## 产品目标与当前完成度
 
@@ -68,7 +84,7 @@ git diff e5c04ea stable-base-2026-09-17 -- client server package.json package-lo
 
 ### 生产 UI 重构分支
 
-2026-11-02 在 `hand-UI-update` 分支完成一轮生产界面 UI / 动画 / 交互重构（纸墨视觉、小赖字体、逐笔状态标签、重新合成的音效、三栏房间布局、slogan 清理）。协议与服务端未改。该分支未合并 main、未部署；真人试玩与真机验收由后续会话负责。范围、来源转译与验证记录见 [ART-DIRECTION 第 8 节](ART-DIRECTION.md)。
+2026-11-02 在 `hand-UI-update` 分支完成一轮生产界面 UI / 动画 / 交互重构（纸墨视觉、小赖字体、逐笔状态标签、重新合成的音效、三栏房间布局、slogan 清理），经审查修复和用户确认后已合并 main、部署上线。范围、来源转译与组件验收见 [ART-DIRECTION 第 8 节](ART-DIRECTION.md)；本次发布身份与验证统一见本文开头。
 
 ## 历史与决策出处
 
