@@ -32,7 +32,7 @@
 
 后端示例见 [deploy/.env.example](../deploy/.env.example)。生产使用精确 `CLIENT_ORIGIN=https://170.106.190.20`、`TRUST_PROXY=loopback`、loopback 监听和持久 DB 路径。代理 SITE_ADDRESS 为该 IP。
 
-管理员先正常登录大厅，再打开词包审核。ADMIN_KEY 是服务端独立随机值，空值关闭审核；不是 sudo 密码。需要密钥时通过授权的 SSH / sudo 渠道私下获取，不在会话、命令日志或公开交接文档中打印。sudo 凭据由操作者安全提供；仓库不保存密码，也不依赖某台开发机的个人密钥文件路径。
+管理员先正常登录大厅，再打开词包审核。ADMIN_KEY 是管理员设置的独立审核凭据，可使用自选 PIN，空值关闭审核；不是 sudo 密码。实际值只保存在服务器受限配置中，不进 Git、会话输出、命令日志或公开交接文档。读取或轮换通过授权的 SSH / sudo 渠道完成；应用启动时读取配置，轮换前确认房间空闲，更新后重启并验证新凭据可用、旧凭据失效。sudo 凭据由操作者安全提供；仓库不保存密码，也不依赖某台开发机的个人密钥文件路径。
 
 Node 默认不自动读 `.env`；systemd 通过 EnvironmentFile 注入。本地联调环境变量必须在启动 / import config 前设置。
 

@@ -36,7 +36,7 @@ npm run dev --workspace client
 | PORT | 3001 | 后端端口 |
 | CLIENT_ORIGIN | http://localhost:5173 | 精确来源，含协议，无尾部斜线 |
 | DATABASE_PATH | server/data/app.db | SQLite，自动创建父目录 |
-| ADMIN_KEY | 空 | 空值关闭审核；启用时使用独立随机密钥 |
+| ADMIN_KEY | 空 | 空值关闭审核；启用时设置独立审核凭据，可使用管理员自选 PIN |
 | TRUST_PROXY | 空 | 只有受信本机代理时设为 loopback |
 
 普通 HTTP 使用 Bearer token，WebSocket 使用连接 token；管理接口额外要求 `x-admin-key`。带 Origin 的请求必须匹配 CLIENT_ORIGIN。HTTP 有来源 / 数据 / 速率校验，WS 有消息大小 / 频率 / 积压限制和权限检查。适合小型朋友试玩，不提供账号体系、跨实例扩容或持久化对局。
