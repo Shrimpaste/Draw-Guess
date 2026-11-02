@@ -94,3 +94,34 @@ it("releases the canvas when a reset cannot be sent or the server rolls it back"
   fireEvent.pointerDown(screen.getByLabelText("绘画画布"), { button: 0, clientX: 10, clientY: 10 });
   expect(onStroke).toHaveBeenCalledOnce();
 });
+
+it("follows the pointer with a pencil cursor and presses it while drawing", () => {
+  render(<CanvasBoard room={room} isDrawer onStroke={vi.fn(() => true)} />);
+  const canvas = screen.getByLabelText("绘画画布");
+  const cursor = document.querySelector(".canvas-cursor");
+  expect(cursor).not.toHaveClass("is-visible");
+  fireEvent.pointerMove(canvas, { clientX: 40, clientY: 30 });
+  expect(cursor).toHaveClass("is-visible");
+  expect(cursor.style.transform).toBe("translate(40px, 30px)");
+  fireEvent.pointerDown(canvas, { button: 0, clientX: 40, clientY: 30 });
+  expect(cursor).toHaveClass("is-down");
+  fireEvent.pointerUp(canvas);
+  expect(cursor).not.toHaveClass("is-down");
+  fireEvent.pointerLeave(canvas);
+  expect(cursor).not.toHaveClass("is-visible");
+});
+it("turns the finished drawing over like a page when the next round starts", () => {
+  const drawn = { ...room, canvas: [{ id: "old", tool: "pen", color: "#3b3428", width: 6, points: [{ x: 1, y: 1 }, { x: 9, y: 9 }] }] };
+  const view = render(<CanvasBoard room={drawn} isDrawer={false} />);
+  expect(document.querySelector(".page-flip")).toBeNull();
+  view.rerender(<CanvasBoard room={{ ...room, round: { id: "next", status: "active" } }} isDrawer={false} />);
+  expect(document.querySelector(".page-flip")).not.toBeNull();
+  act(() => vi.advanceTimersByTime(1200));
+  expect(document.querySelector(".page-flip")).toBeNull();
+});
+it("does not turn a page for undo or clear within the same round", () => {
+  const drawn = { ...room, canvas: [{ id: "old", tool: "pen", color: "#3b3428", width: 6, points: [{ x: 1, y: 1 }] }] };
+  const view = render(<CanvasBoard room={drawn} isDrawer />);
+  view.rerender(<CanvasBoard room={{ ...room, canvasEpoch: 2 }} isDrawer />);
+  expect(document.querySelector(".page-flip")).toBeNull();
+});

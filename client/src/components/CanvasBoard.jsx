@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DrawingToolbar, palette } from "./DrawingToolbar.jsx";
 import { pencilScratch } from "../sound.js";
 
@@ -25,6 +25,52 @@ export function drawStroke(context, stroke) {
   context.restore();
 }
 
+const prefersStill = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// The previous round's drawing lifts over the top binding like a sketchbook page.
+function PageFlip({ flip, onDone }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    ref.current?.getContext("2d")?.drawImage(flip.image, 0, 0);
+  }, [flip]);
+  useEffect(() => {
+    const timer = setTimeout(onDone, 1000);
+    return () => clearTimeout(timer);
+  }, [flip, onDone]);
+  return (
+    <div className="page-flip" aria-hidden="true">
+      <div className="page-flip-sheet">
+        <canvas ref={ref} width={flip.image.width} height={flip.image.height} />
+      </div>
+    </div>
+  );
+}
+
+function PencilCursor({ tool, cursorRef }) {
+  return (
+    <div ref={cursorRef} className={`canvas-cursor cursor-${tool.tool}`} style={{ "--tip": tool.color }} aria-hidden="true">
+      <span className="cursor-brush" />
+      <svg className="cursor-tool" key={tool.tool} viewBox="0 0 30 30" fill="none" strokeLinecap="round" strokeLinejoin="round">
+        {tool.tool === "eraser" ? (
+          <>
+            <path d="m2 27 9-11 8 7-6 7H6Z" fill="#f2ddd6" stroke="#504936" strokeWidth="1.3" />
+            <path d="m11 16 8-9 8 7-8 9Z" fill="#ad5541" stroke="#504936" strokeWidth="1.3" />
+            <path d="m13 18 6 5" stroke="#504936" strokeWidth="1" />
+          </>
+        ) : (
+          <>
+            <path d="m6.5 18.5 14-14 5 5-14 14Z" fill="#bc9244" stroke="#504936" strokeWidth="1.3" />
+            <path d="m20.5 4.5 2-2c1-1 2.6-1 3.6 0l1.4 1.4c1 1 1 2.6 0 3.6l-2 2" fill="#d9a59a" stroke="#504936" strokeWidth="1.3" />
+            <path d="M6.5 18.5 1.5 28.5l10-5Z" fill="#ead8b3" stroke="#504936" strokeWidth="1.3" />
+            <path className="cursor-tip" d="M3.4 24.6 1.5 28.5l3.9-1.9Z" />
+            <path d="m9 21 13.5-13.5" stroke="#f9f4e9" strokeWidth="1" opacity=".6" />
+          </>
+        )}
+      </svg>
+    </div>
+  );
+}
+
 export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
   const [pixelRatio] = useState(() =>
     Math.min(window.devicePixelRatio || 1, 2),
@@ -39,6 +85,11 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
   const resetPendingRef = useRef(false);
   const scratchRef = useRef(null);
   const lastMoveRef = useRef(null);
+  const cursorRef = useRef(null);
+  const fxRef = useRef(null);
+  const previousRoundRef = useRef(room.round.id);
+  const [flip, setFlip] = useState(null);
+  const endFlip = useCallback(() => setFlip(null), []);
   const [waitingForReset, setWaitingForReset] = useState(false);
   const canDraw = isDrawer && !waitingForReset;
   const confirmed = useMemo(() => new Map(room.canvas.map((stroke) => [stroke.id, stroke.points.length])), [room.canvas]);
@@ -87,6 +138,15 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
     localRef.current.clear();
   }
   useEffect(() => {
+    const buffer = bufferRef.current;
+    if (previousRoundRef.current !== room.round.id && renderedRef.current.length && buffer && !prefersStill()) {
+      const image = document.createElement("canvas");
+      image.width = buffer.width;
+      image.height = buffer.height;
+      image.getContext("2d")?.drawImage(buffer, 0, 0);
+      setFlip({ key: room.round.id, image });
+    }
+    previousRoundRef.current = room.round.id;
     discardLocal();
     resetPendingRef.current = false;
     setWaitingForReset(false);
@@ -147,6 +207,36 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
     [],
   );
 
+  function showCursor(event) {
+    const cursor = cursorRef.current, canvas = canvasRef.current;
+    if (!cursor || !canvas) return;
+    if (event.pointerType === "touch") {
+      cursor.classList.remove("is-visible");
+      return;
+    }
+    const rect = canvas.getBoundingClientRect();
+    cursor.style.transform = `translate(${event.clientX - rect.left + canvas.offsetLeft}px, ${event.clientY - rect.top + canvas.offsetTop}px)`;
+    cursor.style.setProperty("--brush", `${Math.max(3, (tool.width * rect.width) / 960)}px`);
+    cursor.classList.add("is-visible");
+  }
+  function hideCursor() {
+    cursorRef.current?.classList.remove("is-visible", "is-down");
+  }
+  // A short ink ring where the pen meets the paper; a few at most.
+  function contact(event) {
+    const layer = fxRef.current, canvas = canvasRef.current;
+    if (!layer || !canvas || prefersStill()) return;
+    const rect = canvas.getBoundingClientRect();
+    const ring = document.createElement("span");
+    ring.className = `canvas-contact contact-${tool.tool}`;
+    ring.style.left = `${event.clientX - rect.left + canvas.offsetLeft}px`;
+    ring.style.top = `${event.clientY - rect.top + canvas.offsetTop}px`;
+    ring.style.setProperty("--tip", tool.color);
+    ring.style.setProperty("--size", `${Math.max(10, (tool.width * rect.width) / 960 + 12)}px`);
+    while (layer.childElementCount >= 3) layer.firstElementChild.remove();
+    layer.append(ring);
+    setTimeout(() => ring.remove(), 600);
+  }
   function point(event) {
     const rect = canvasRef.current.getBoundingClientRect();
     return {
@@ -198,6 +288,9 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
     )
       return;
     event.preventDefault();
+    showCursor(event);
+    cursorRef.current?.classList.add("is-down");
+    contact(event);
     canvasRef.current.focus?.({ preventScroll: true });
     canvasRef.current.setPointerCapture?.(event.pointerId);
     const stroke = {
@@ -217,6 +310,7 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
     if (activeRef.current) timerRef.current = setInterval(flush, 25);
   }
   function pointerMove(event) {
+    if (canDraw) showCursor(event);
     const stroke = activeRef.current;
     if (!stroke || stroke.pointerId !== event.pointerId || !isDrawer) return;
     const next = point(event),
@@ -230,6 +324,7 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
     requestPaint();
   }
   function finish(event) {
+    cursorRef.current?.classList.remove("is-down");
     const stroke = activeRef.current;
     if (
       !stroke ||
@@ -330,11 +425,16 @@ export function CanvasBoard({ room, isDrawer, onStroke, onClear, onUndo }) {
             aspectRatio: "960 / 620",
           }}
           onPointerDown={pointerDown}
+          onPointerEnter={(event) => canDraw && showCursor(event)}
+          onPointerLeave={hideCursor}
           onPointerMove={pointerMove}
           onPointerUp={finish}
           onPointerCancel={finish}
           onLostPointerCapture={finish}
         />
+        <div ref={fxRef} className="canvas-fx" aria-hidden="true" />
+        {canDraw && <PencilCursor tool={tool} cursorRef={cursorRef} />}
+        {flip && <PageFlip key={flip.key} flip={flip} onDone={endFlip} />}
         {["waiting", "collecting-word"].includes(room.round.status) && !room.canvas.length && (
           <div className="canvas-placeholder" aria-hidden="true">
             <svg viewBox="0 0 120 70" fill="none" strokeLinecap="round" strokeLinejoin="round">

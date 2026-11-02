@@ -2,6 +2,7 @@
 import * as RadioPrimitive from "@radix-ui/react-radio-group";
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
 import { SketchIcon } from "./sketch-icon.jsx";
+import { SketchMark } from "./sketch-mark.jsx";
 
 export function RadioCards({ value, onValueChange, options, label, disabled }) {
   return (
@@ -21,6 +22,7 @@ export function RadioCards({ value, onValueChange, options, label, disabled }) {
           {art && (
             <span className="radio-art" aria-hidden="true">
               {art}
+              <SketchMark />
             </span>
           )}
           <span className="radio-title">

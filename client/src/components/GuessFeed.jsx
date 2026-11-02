@@ -106,7 +106,7 @@ export const GuessFeed = memo(function GuessFeed({ room, localGuesses = noLocalG
                 {message.playerId === room.me.id ? "我" : message.playerId}
               </strong>
             )}
-            <span className="message-text">{message.text}</span>
+            <span className="message-text"><span>{message.text}</span></span>
             {message.type === "guess" && (
               <small className="message-state">
                 {message.status === "accepted" && <SketchIcon name="check" size={18} className="drawn" />}
@@ -125,7 +125,7 @@ export const GuessFeed = memo(function GuessFeed({ room, localGuesses = noLocalG
         {localGuesses.map((guess) => (
           <div key={guess.id} className={`message message-guess message-mine message-${guess.status}`}>
             <strong>我</strong>
-            <span className="message-text">{guess.text}</span>
+            <span className="message-text"><span>{guess.text}</span></span>
             <small className="message-state">{localStates[guess.status]}</small>
           </div>
         ))}

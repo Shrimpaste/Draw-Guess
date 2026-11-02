@@ -70,6 +70,7 @@
     box-shadow: none;
   }
   .ui-button-ghost:disabled {
+    border-color: transparent;
     background: transparent;
   }
   .ui-button-destructive {
@@ -119,7 +120,7 @@
     border: 0;
     border-bottom: 1.6px solid var(--ink-soft);
     border-radius: 4px 4px 0 0;
-    background: rgb(255 252 244 / 0.75);
+    background-color: rgb(255 252 244 / 0.75);
     color: var(--ink);
     font: inherit;
     font-size: 18px;
@@ -128,26 +129,40 @@
   .ui-input::placeholder {
     color: var(--ink-faint);
   }
+  .ui-input {
+    caret-color: var(--red);
+  }
   .ui-input:focus {
     outline: none;
-    border-bottom-color: var(--blue);
-    background: #fffdf7;
-    box-shadow: 0 1.6px 0 var(--blue);
+    border-bottom-color: var(--red);
+    background-color: #fffaf0;
+    box-shadow: 0 1.4px 0 var(--red), 0 0 0 3px rgb(188 146 68 / 0.16);
+  }
+  .ui-input::selection {
+    background: rgb(188 146 68 / 0.32);
   }
   .ui-input:disabled {
     cursor: not-allowed;
     color: var(--ink-faint);
-    background: rgb(230 220 199 / 0.36);
+    background-color: rgb(230 220 199 / 0.36);
     border-bottom-style: dashed;
   }
   .ui-input[aria-invalid="true"] {
     border-bottom-color: var(--red);
   }
+  /* Ruled paper: one rule per text line, placed just under the glyph baseline. */
   .ui-textarea {
+    --rule-gap: 30px;
+    /* Xiaolai at 18px on a 30px line sits its baseline 22px down; rule ~3.5px below it. */
+    --rule-drop: -4px;
     min-height: 112px;
+    padding-top: 6px;
     resize: vertical;
-    line-height: 30px;
-    background-image: repeating-linear-gradient(transparent 0 29px, rgb(76 96 145 / 0.16) 29px 30px);
+    line-height: var(--rule-gap);
+    background-image: linear-gradient(transparent calc(var(--rule-gap) - 1.2px), rgb(76 96 145 / 0.18) calc(var(--rule-gap) - 1.2px));
+    background-size: 100% var(--rule-gap);
+    background-position: 0 calc(6px + var(--rule-drop, 0px));
+    background-repeat: repeat-y;
     background-attachment: local;
   }
   .ui-field {
@@ -307,16 +322,24 @@
     transform: translateY(-1px);
   }
   .ui-radio-card[data-state="checked"] {
-    border-color: var(--red);
     background: #f6e8dc;
-    box-shadow: inset 1px 2px 0 rgb(173 85 65 / 0.12);
   }
-  .radio-art svg {
+  .radio-art {
+    position: relative;
+    justify-self: start;
+    --mark: var(--red);
+  }
+  .radio-art .sketch-mark {
+    inset: -5px -8px;
+    width: calc(100% + 16px);
+    height: calc(100% + 10px);
+  }
+  .radio-art > svg:first-child {
     width: 58px;
     height: 40px;
     transition: transform 0.2s cubic-bezier(0.3, 0.7, 0.4, 1.4);
   }
-  .ui-radio-card[data-state="checked"] .radio-art svg {
+  .ui-radio-card[data-state="checked"] .radio-art > svg:first-child {
     transform: rotate(-4deg) translateY(-2px);
   }
   .radio-title {
@@ -387,9 +410,46 @@
     color: var(--ink);
   }
   .ui-toggle[data-state="on"] {
-    border-color: var(--blue);
     color: var(--blue);
-    background: #e9e7e0;
+  }
+  .ui-toggle .sketch-mark-underline {
+    left: 8px;
+    right: 8px;
+    bottom: 1px;
+  }
+  .sketch-mark {
+    position: absolute;
+    overflow: visible;
+    pointer-events: none;
+  }
+  .sketch-mark path {
+    fill: none;
+    stroke: var(--mark, var(--blue));
+    stroke-width: 3;
+    stroke-linecap: round;
+    /* A gap longer than the path and an offset just past it leave no round-cap dot when empty. */
+    stroke-dasharray: 1 2;
+    stroke-dashoffset: 1.001;
+    /* Erasing: quicker, and from wherever the ink currently ends. */
+    transition: stroke-dashoffset 0.2s cubic-bezier(0.55, 0, 0.8, 0.35);
+  }
+  .sketch-mark-ring {
+    inset: -4px;
+    width: calc(100% + 8px);
+    height: calc(100% + 8px);
+  }
+  .sketch-mark-underline {
+    left: 4px;
+    right: 4px;
+    bottom: -3px;
+    width: calc(100% - 8px);
+    height: 10px;
+  }
+  [aria-pressed="true"] > .sketch-mark path,
+  [data-state="on"] > .sketch-mark path,
+  [data-state="checked"] .sketch-mark path {
+    stroke-dashoffset: 0;
+    transition: stroke-dashoffset 0.38s cubic-bezier(0.3, 0.55, 0.35, 1);
   }
   .ui-preview {
     max-width: 1000px;

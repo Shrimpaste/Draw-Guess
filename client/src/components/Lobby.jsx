@@ -2,6 +2,7 @@ import { Button } from "./ui/button.jsx";
 import { Input, Field } from "./ui/field.jsx";
 import { RadioCards } from "./ui/selection.jsx";
 import { SketchIcon } from "./ui/sketch-icon.jsx";
+import { SketchMark } from "./ui/sketch-mark.jsx";
 import { InkWord } from "./ink/InkWord.jsx";
 import { inkLabels } from "./ink/labels.js";
 import { modes } from "../modes.js";
@@ -50,8 +51,9 @@ export function Lobby({
       <div className="page-heading">
         <div>
           <span className="meta">{lobby.length} 间开放房间</span>
-          <h1>
+          <h1 className="marked-heading">
             <InkWord text={inkLabels.lobby} />
+            <SketchMark variant="underline" className="heading-mark" />
           </h1>
         </div>
         <Button variant="outline" onClick={() => onDialog("submit")}>

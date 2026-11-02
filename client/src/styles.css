@@ -63,9 +63,16 @@
     -webkit-tap-highlight-color: transparent;
   }
   :focus-visible {
-    outline: 2px solid var(--blue);
+    outline: 2px solid rgb(76 96 145 / 0.7);
     outline-offset: 3px;
     border-radius: 6px;
+  }
+  /* Text fields show focus with their own pencil underline instead of a ring. */
+  .ui-input:focus-visible {
+    outline: none;
+  }
+  ::selection {
+    background: rgb(188 146 68 / 0.3);
   }
   h1,
   h2,
@@ -132,13 +139,13 @@
     stroke-width: 2.4;
     stroke-linecap: round;
     stroke-linejoin: round;
-    stroke-dasharray: 1 1;
-    stroke-dashoffset: 1;
+    stroke-dasharray: 1 2;
+    stroke-dashoffset: 1.001;
     animation: ink-draw var(--len, 0.5s) var(--at, 0s) cubic-bezier(0.45, 0.1, 0.3, 1) forwards;
   }
   .sketch-icon.drawn path {
-    stroke-dasharray: 1 1;
-    stroke-dashoffset: 1;
+    stroke-dasharray: 1 2;
+    stroke-dashoffset: 1.001;
     animation: ink-draw 0.32s calc(var(--i) * 0.12s + 0.05s) ease-out forwards;
   }
 
@@ -159,6 +166,29 @@
     clip-path: polygon(2% 10%, 30% 0, 62% 8%, 98% 0, 100% 88%, 70% 100%, 35% 92%, 0 100%);
     transform: rotate(-2.5deg);
     pointer-events: none;
+  }
+
+  /* Views arrive like a turned sheet: hinged on the left, settling flat. */
+  .entry,
+  .lobby,
+  .game-room {
+    transform-origin: 0 50%;
+    animation: page-turn 0.62s cubic-bezier(0.25, 0.7, 0.25, 1) backwards;
+  }
+  .marked-heading {
+    position: relative;
+    display: inline-block;
+  }
+  .heading-mark {
+    --mark: var(--red);
+    left: 0;
+    right: -6px;
+    bottom: -8px;
+    width: calc(100% + 6px);
+  }
+  .heading-mark path {
+    stroke-dashoffset: 1.001;
+    animation: ink-draw 0.45s 0.85s cubic-bezier(0.3, 0.55, 0.35, 1) forwards;
   }
 
   /* Shell */
@@ -520,8 +550,16 @@
     color: var(--green-deep);
   }
   .pack-chip[aria-pressed="true"] .sketch-icon path {
-    stroke-dasharray: 1 1;
-    animation: ink-draw 0.25s ease-out;
+    stroke-dasharray: 1 2;
+    animation: ink-draw 0.25s ease-out backwards;
+  }
+  @keyframes chip-ink {
+    from {
+      stroke-dashoffset: 1.001;
+    }
+  }
+  .pack-chip[aria-pressed="true"] .sketch-icon path {
+    animation-name: chip-ink;
   }
   .pack-chip:disabled {
     cursor: not-allowed;
@@ -828,6 +866,16 @@
 @keyframes ink-draw {
   to {
     stroke-dashoffset: 0;
+  }
+}
+@keyframes page-turn {
+  from {
+    opacity: 0;
+    transform: perspective(1600px) rotateY(-16deg) translateX(-12px);
+    filter: drop-shadow(16px 0 18px rgb(80 64 32 / 0.18));
+  }
+  60% {
+    opacity: 1;
   }
 }
 @keyframes slip-in {

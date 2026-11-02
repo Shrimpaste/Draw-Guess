@@ -2,6 +2,7 @@ import { ConfirmAction } from "./ui/overlay.jsx";
 import { memo } from "react";
 import { Button } from "./ui/button.jsx";
 import { SketchIcon } from "./ui/sketch-icon.jsx";
+import { SketchMark } from "./ui/sketch-mark.jsx";
 import { Tooltip, TooltipProvider } from "./ui/tool-overlays.jsx";
 import { ToggleGroup } from "./ui/tool-selection.jsx";
 
@@ -88,6 +89,7 @@ export const DrawingToolbar = memo(function DrawingToolbar({
                   background: tool.tool === "eraser" ? "#b3a68b" : tool.color,
                 }}
               />
+              <SketchMark />
             </button>
           ))}
         </div>
